@@ -15,6 +15,13 @@ updates:
       interval: weekly
     commit-message:
       prefix: fix(deps)
+    # Without this, one action bump opens a PR per directory above: five
+    # `fix(deps)` changelog lines for one change, each needing a rebase after
+    # the last merges. Grouped by dependency name, so each action is still its
+    # own PR.
+    groups:
+      actions:
+        group-by: dependency-name
   # Pins the reusable workflows install in callers (mdformat, PyYAML). Same
   # reasoning: a bump reaches every caller, so it releases.
   - package-ecosystem: pip

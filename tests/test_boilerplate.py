@@ -281,6 +281,27 @@ def test_dependabot_covers_every_template_workflow_directory():
     assert set(actions["directories"]) == expected
 
 
+def test_dependabot_bumps_each_action_once_across_directories():
+    config = yaml.safe_load((ROOT / ".github/dependabot.yml").read_text())
+    (actions,) = [u for u in config["updates"] if u["package-ecosystem"] == "github-actions"]
+    assert [g.get("group-by") for g in actions["groups"].values()] == ["dependency-name"]
+
+
+@pytest.mark.parametrize("overlay", ["node", "python"])
+def test_language_overlays_group_development_updates(overlay):
+    config = yaml.safe_load((ROOT / f"template/{overlay}/.github/dependabot.yml").read_text())
+    (packages,) = [u for u in config["updates"] if u["package-ecosystem"] != "github-actions"]
+    groups = list((packages.get("groups") or {}).values())
+    assert {"dependency-type": "development", "update-types": ["minor", "patch"]} in groups
+
+
+def test_every_template_release_pr_workflow_says_to_approve_its_runs():
+    for path in (ROOT / "template").glob("*/.github/workflows/*.yml"):
+        text = path.read_text()
+        if "googleapis/release-please-action" in text:
+            assert "Approve and run" in text, path
+
+
 def all_workflows():
     return sorted(
         [*(ROOT / ".github/workflows").glob("*.yml"), *(ROOT / "template").glob("*/.github/workflows/*.yml")]

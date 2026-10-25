@@ -27,6 +27,10 @@ jobs:
     steps:
       # Inline release-type until the repo needs a release-please-config.json
       # (extra-files, pre-1.0 bump rules, several packages).
+      #
+      # The release PR is opened with the default GITHUB_TOKEN, so its
+      # pull_request runs are created but held for "Approve and run". Branch
+      # protection requires them, so approve them before merging.
       - uses: googleapis/release-please-action@v5
         id: release
         with:
