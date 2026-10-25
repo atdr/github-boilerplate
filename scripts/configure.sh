@@ -39,11 +39,14 @@ drift() {
 }
 
 if [ "$mode" = --diff ]; then
-	out=$(drift "repos/$repo" "$settings/repository.json")
-	out=$out$(drift "repos/$repo/actions/permissions/workflow" "$settings/actions-workflow.json")
-	if [ -n "$out" ]; then
+	# Command substitution drops trailing newlines, so print each part rather
+	# than concatenating them.
+	repository=$(drift "repos/$repo" "$settings/repository.json")
+	workflow=$(drift "repos/$repo/actions/permissions/workflow" "$settings/actions-workflow.json")
+	if [ -n "$repository$workflow" ]; then
 		echo "$repo differs from settings/ (live -> tracked):"
-		echo "$out"
+		[ -z "$repository" ] || echo "$repository"
+		[ -z "$workflow" ] || echo "$workflow"
 		exit 1
 	fi
 	echo "$repo matches settings/repository.json and settings/actions-workflow.json"
