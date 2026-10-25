@@ -147,6 +147,24 @@ def check_dependabot(root: Path, f: Findings) -> None:
             "version on their own",
         )
 
+    # A uv project's dependencies live in uv.lock, which only the uv ecosystem
+    # updates; pip would leave the lock, and so CI and the release, unchanged.
+    # The entry has to cover the root, where the lock is, not some other folder.
+    def covers_root(update: dict) -> bool:
+        folders = update.get("directories") or [update.get("directory")]
+        return any(str(folder).rstrip("/") == "" for folder in folders if folder)
+
+    uv_at_root = any(
+        u.get("package-ecosystem") == "uv" and covers_root(u) for u in updates
+    )
+    if (root / "uv.lock").is_file() and not uv_at_root:
+        f.add(
+            path,
+            "dependabot-uv",
+            "this repo has a uv.lock, so add a package-ecosystem: uv entry "
+            "for directory /; pip does not update the lock",
+        )
+
     for update in updates:
         ecosystem = update.get("package-ecosystem")
         message = update.get("commit-message") or {}

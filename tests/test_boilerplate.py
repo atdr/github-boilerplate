@@ -419,3 +419,57 @@ def test_core_repo_without_prettier_is_left_alone(tmp_path):
     root = apply("core", tmp_path)
     (root / "package.json").write_text('{"devDependencies": {"eslint": "^9.0.0"}}')
     assert "markdown-formatter" not in rules(root)
+
+
+def test_catches_a_uv_project_on_the_pip_ecosystem(tmp_path):
+    root = apply("python", tmp_path)
+    (root / "uv.lock").write_text("version = 1\n")
+    assert "dependabot-uv" in rules(root)
+
+
+def test_uv_project_on_the_uv_ecosystem_passes(tmp_path):
+    root = apply("python", tmp_path)
+    (root / "uv.lock").write_text("version = 1\n")
+    path = root / ".github/dependabot.yml"
+    path.write_text(path.read_text().replace("package-ecosystem: pip", "package-ecosystem: uv"))
+    assert "dependabot-uv" not in rules(root)
+
+
+def test_python_ci_runs_every_tool_through_the_chosen_installer():
+    # Each job detects uv.lock, installs uv only then, and runs ruff and pytest
+    # behind $RUN, which is `uv run --locked` with a lock and empty without.
+    workflow = yaml.safe_load((ROOT / ".github/workflows/python-ci.yml").read_text())
+    for job_id, job in workflow["jobs"].items():
+        steps = job["steps"]
+        names = [s.get("name") for s in steps]
+        assert "Use uv if the repo has a lockfile" in names, job_id
+        uv = [s for s in steps if str(s.get("uses", "")).startswith("astral-sh/setup-uv@")]
+        assert len(uv) == 1 and uv[0]["if"] == "steps.tool.outputs.uv == 'true'", job_id
+        for step in steps:
+            command = str(step.get("run", ""))
+            if command.split()[:1] in (["ruff"], ["pytest"]):
+                raise AssertionError(f"{job_id}: {command!r} bypasses $RUN")
+        install = next(st for st in steps if st.get("name") == "Install")
+        assert "uv sync --locked $UV_SYNC_ARGS" in install["run"], job_id
+
+
+def test_uv_tools_run_in_the_synced_environment():
+    # `uv run` without --no-sync would sync again with uv's defaults, which
+    # leaves out the extras `uv-sync-args` installed.
+    text = (ROOT / ".github/workflows/python-ci.yml").read_text()
+    assert text.count('echo "RUN=uv run --no-sync"') == 3
+    workflow = yaml.safe_load(text)
+    assert workflow[True]["workflow_call"]["inputs"]["uv-sync-args"]["default"] == "--all-extras"
+
+
+def test_catches_a_uv_entry_that_misses_the_root_lock(tmp_path):
+    root = apply("python", tmp_path)
+    (root / "uv.lock").write_text("version = 1\n")
+    path = root / ".github/dependabot.yml"
+    path.write_text(path.read_text().replace(
+        "  - package-ecosystem: github-actions",
+        "  - package-ecosystem: uv\n    directory: /tools\n    schedule:\n      interval: weekly\n"
+        "    commit-message:\n      prefix: chore\n      prefix-development: chore\n"
+        "  - package-ecosystem: github-actions",
+    ))
+    assert "dependabot-uv" in rules(root)

@@ -4,6 +4,12 @@
 # What pytest measures under coverage lives in pyproject.toml
 # ([tool.coverage.run]), not on the command line here, so a developer running
 # `pytest --cov` locally measures what CI measures.
+#
+# A repo with a uv.lock is installed from it (`uv sync --locked`), so CI tests
+# exactly the versions the lock pins and fails if the lock is stale. Its tools
+# then run through `uv run --no-sync`, which uses that environment as synced
+# rather than syncing again with different options. Without a lock, `install`
+# runs with pip.
 name: python-ci
 
 on:
@@ -18,9 +24,19 @@ on:
         type: string
         default: "3.13"
       install:
-        description: Command that installs the package and its dev tools
+        description: >-
+          Command that installs the package and its dev tools with pip. Ignored
+          when the repo has a uv.lock, which is installed with uv instead.
         type: string
         default: pip install -e ".[dev]"
+      uv-sync-args:
+        description: >-
+          Arguments added to `uv sync --locked` in a repo with a uv.lock. The
+          default takes every extra, so dev tools kept in an extra (like the
+          `.[dev]` pip installs) are there too; dependency groups such as `dev`
+          are installed by uv's default either way.
+        type: string
+        default: --all-extras
       coverage:
         description: Run pytest under coverage and upload coverage.xml to Codecov
         type: boolean
@@ -44,9 +60,32 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ inputs.python-version }}
-      - run: ${{ inputs.install }}
-      - run: ruff check .
-      - run: ruff format --check .
+      - name: Use uv if the repo has a lockfile
+        id: tool
+        run: |
+          if [ -f uv.lock ]; then
+            echo "uv=true" >> "$GITHUB_OUTPUT"
+            echo "RUN=uv run --no-sync" >> "$GITHUB_ENV"
+          fi
+      - if: steps.tool.outputs.uv == 'true'
+        uses: astral-sh/setup-uv@v10.3.2
+        with:
+          python-version: ${{ inputs.python-version }}
+      - name: Install
+        env:
+          INSTALL: ${{ inputs.install }}
+          UV: ${{ steps.tool.outputs.uv }}
+          UV_SYNC_ARGS: ${{ inputs.uv-sync-args }}
+        run: |
+          if [ "$UV" = true ]; then
+            # Unquoted on purpose: it is a list of arguments.
+            # shellcheck disable=SC2086
+            uv sync --locked $UV_SYNC_ARGS
+          else
+            eval "$INSTALL"
+          fi
+      - run: $RUN ruff check .
+      - run: $RUN ruff format --check .
 
   test:
     # Interpolated, not a fixed string: a matrix job with a static name produces
@@ -65,8 +104,31 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
-      - run: ${{ inputs.install }}
-      - run: pytest -q
+      - name: Use uv if the repo has a lockfile
+        id: tool
+        run: |
+          if [ -f uv.lock ]; then
+            echo "uv=true" >> "$GITHUB_OUTPUT"
+            echo "RUN=uv run --no-sync" >> "$GITHUB_ENV"
+          fi
+      - if: steps.tool.outputs.uv == 'true'
+        uses: astral-sh/setup-uv@v10.3.2
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install
+        env:
+          INSTALL: ${{ inputs.install }}
+          UV: ${{ steps.tool.outputs.uv }}
+          UV_SYNC_ARGS: ${{ inputs.uv-sync-args }}
+        run: |
+          if [ "$UV" = true ]; then
+            # Unquoted on purpose: it is a list of arguments.
+            # shellcheck disable=SC2086
+            uv sync --locked $UV_SYNC_ARGS
+          else
+            eval "$INSTALL"
+          fi
+      - run: $RUN pytest -q
 
   # Reporting, not a gate: the matrix above is what proves the suite passes.
   # One interpreter, because coverage of the same code on several says the same
@@ -83,8 +145,31 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ inputs.python-version }}
-      - run: ${{ inputs.install }}
-      - run: pytest -q --cov --cov-report=xml
+      - name: Use uv if the repo has a lockfile
+        id: tool
+        run: |
+          if [ -f uv.lock ]; then
+            echo "uv=true" >> "$GITHUB_OUTPUT"
+            echo "RUN=uv run --no-sync" >> "$GITHUB_ENV"
+          fi
+      - if: steps.tool.outputs.uv == 'true'
+        uses: astral-sh/setup-uv@v10.3.2
+        with:
+          python-version: ${{ inputs.python-version }}
+      - name: Install
+        env:
+          INSTALL: ${{ inputs.install }}
+          UV: ${{ steps.tool.outputs.uv }}
+          UV_SYNC_ARGS: ${{ inputs.uv-sync-args }}
+        run: |
+          if [ "$UV" = true ]; then
+            # Unquoted on purpose: it is a list of arguments.
+            # shellcheck disable=SC2086
+            uv sync --locked $UV_SYNC_ARGS
+          else
+            eval "$INSTALL"
+          fi
+      - run: $RUN pytest -q --cov --cov-report=xml
       # Advisory only: a Codecov outage or a token missing from a fork says
       # nothing about the change under review. The coverage run above stays
       # blocking.

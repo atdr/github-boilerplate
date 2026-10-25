@@ -3,6 +3,9 @@ updates:
   # A runtime dependency bump changes what users install, so it has to reach
   # the changelog and cut a release: `fix` is shown by release-please, `chore`
   # is hidden. Dev dependencies affect nobody downstream, so they stay `chore`.
+  #
+  # A project with a uv.lock uses `package-ecosystem: uv` instead: pip would not
+  # update the lock, which is what CI installs from.
   - package-ecosystem: pip
     directory: /
     schedule:
