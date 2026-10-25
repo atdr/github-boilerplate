@@ -5,9 +5,11 @@
 # ([tool.coverage.run]), not on the command line here, so a developer running
 # `pytest --cov` locally measures what CI measures.
 #
-# A repo with a uv.lock is installed from it (`uv sync --locked`) and its tools
-# run through `uv run --locked`, so CI tests exactly the versions the lock pins
-# and fails if the lock is stale. Without one, `install` runs with pip.
+# A repo with a uv.lock is installed from it (`uv sync --locked`), so CI tests
+# exactly the versions the lock pins and fails if the lock is stale. Its tools
+# then run through `uv run --no-sync`, which uses that environment as synced
+# rather than syncing again with different options. Without a lock, `install`
+# runs with pip.
 name: python-ci
 
 on:
@@ -27,6 +29,14 @@ on:
           when the repo has a uv.lock, which is installed with uv instead.
         type: string
         default: pip install -e ".[dev]"
+      uv-sync-args:
+        description: >-
+          Arguments added to `uv sync --locked` in a repo with a uv.lock. The
+          default takes every extra, so dev tools kept in an extra (like the
+          `.[dev]` pip installs) are there too; dependency groups such as `dev`
+          are installed by uv's default either way.
+        type: string
+        default: --all-extras
       coverage:
         description: Run pytest under coverage and upload coverage.xml to Codecov
         type: boolean
@@ -55,7 +65,7 @@ jobs:
         run: |
           if [ -f uv.lock ]; then
             echo "uv=true" >> "$GITHUB_OUTPUT"
-            echo "RUN=uv run --locked" >> "$GITHUB_ENV"
+            echo "RUN=uv run --no-sync" >> "$GITHUB_ENV"
           fi
       - if: steps.tool.outputs.uv == 'true'
         uses: astral-sh/setup-uv@v10.3.2
@@ -65,9 +75,12 @@ jobs:
         env:
           INSTALL: ${{ inputs.install }}
           UV: ${{ steps.tool.outputs.uv }}
+          UV_SYNC_ARGS: ${{ inputs.uv-sync-args }}
         run: |
           if [ "$UV" = true ]; then
-            uv sync --locked
+            # Unquoted on purpose: it is a list of arguments.
+            # shellcheck disable=SC2086
+            uv sync --locked $UV_SYNC_ARGS
           else
             eval "$INSTALL"
           fi
@@ -96,7 +109,7 @@ jobs:
         run: |
           if [ -f uv.lock ]; then
             echo "uv=true" >> "$GITHUB_OUTPUT"
-            echo "RUN=uv run --locked" >> "$GITHUB_ENV"
+            echo "RUN=uv run --no-sync" >> "$GITHUB_ENV"
           fi
       - if: steps.tool.outputs.uv == 'true'
         uses: astral-sh/setup-uv@v10.3.2
@@ -106,9 +119,12 @@ jobs:
         env:
           INSTALL: ${{ inputs.install }}
           UV: ${{ steps.tool.outputs.uv }}
+          UV_SYNC_ARGS: ${{ inputs.uv-sync-args }}
         run: |
           if [ "$UV" = true ]; then
-            uv sync --locked
+            # Unquoted on purpose: it is a list of arguments.
+            # shellcheck disable=SC2086
+            uv sync --locked $UV_SYNC_ARGS
           else
             eval "$INSTALL"
           fi
@@ -134,7 +150,7 @@ jobs:
         run: |
           if [ -f uv.lock ]; then
             echo "uv=true" >> "$GITHUB_OUTPUT"
-            echo "RUN=uv run --locked" >> "$GITHUB_ENV"
+            echo "RUN=uv run --no-sync" >> "$GITHUB_ENV"
           fi
       - if: steps.tool.outputs.uv == 'true'
         uses: astral-sh/setup-uv@v10.3.2
@@ -144,9 +160,12 @@ jobs:
         env:
           INSTALL: ${{ inputs.install }}
           UV: ${{ steps.tool.outputs.uv }}
+          UV_SYNC_ARGS: ${{ inputs.uv-sync-args }}
         run: |
           if [ "$UV" = true ]; then
-            uv sync --locked
+            # Unquoted on purpose: it is a list of arguments.
+            # shellcheck disable=SC2086
+            uv sync --locked $UV_SYNC_ARGS
           else
             eval "$INSTALL"
           fi

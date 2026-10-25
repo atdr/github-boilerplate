@@ -449,3 +449,27 @@ def test_python_ci_runs_every_tool_through_the_chosen_installer():
             command = str(step.get("run", ""))
             if command.split()[:1] in (["ruff"], ["pytest"]):
                 raise AssertionError(f"{job_id}: {command!r} bypasses $RUN")
+        install = next(st for st in steps if st.get("name") == "Install")
+        assert "uv sync --locked $UV_SYNC_ARGS" in install["run"], job_id
+
+
+def test_uv_tools_run_in_the_synced_environment():
+    # `uv run` without --no-sync would sync again with uv's defaults, which
+    # leaves out the extras `uv-sync-args` installed.
+    text = (ROOT / ".github/workflows/python-ci.yml").read_text()
+    assert text.count('echo "RUN=uv run --no-sync"') == 3
+    workflow = yaml.safe_load(text)
+    assert workflow[True]["workflow_call"]["inputs"]["uv-sync-args"]["default"] == "--all-extras"
+
+
+def test_catches_a_uv_entry_that_misses_the_root_lock(tmp_path):
+    root = apply("python", tmp_path)
+    (root / "uv.lock").write_text("version = 1\n")
+    path = root / ".github/dependabot.yml"
+    path.write_text(path.read_text().replace(
+        "  - package-ecosystem: github-actions",
+        "  - package-ecosystem: uv\n    directory: /tools\n    schedule:\n      interval: weekly\n"
+        "    commit-message:\n      prefix: chore\n      prefix-development: chore\n"
+        "  - package-ecosystem: github-actions",
+    ))
+    assert "dependabot-uv" in rules(root)
