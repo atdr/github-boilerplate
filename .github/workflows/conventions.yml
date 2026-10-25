@@ -1,0 +1,42 @@
+# Reusable: checks the caller's repo against STANDARDS.md.
+#
+# The checker is fetched from this repository at the commit the caller pinned,
+# not copied into each repo, so every repo runs the same rules and a fix lands
+# everywhere with one Dependabot bump. Repo-specific guards (a dependabot
+# prefix tied to whether a runtime dependency exists, say) still belong in
+# that repo's own test suite.
+name: conventions
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  conventions:
+    name: check
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Fetch the checker
+        env:
+          # job.workflow_sha is this workflow's own commit (the one the caller's
+          # @ref resolved to), not the caller's.
+          REF: ${{ job.workflow_sha }}
+        run: |
+          # Outside the workspace, so the check never sees it
+          dir="$RUNNER_TEMP/github-boilerplate"
+          git init -q "$dir"
+          git -C "$dir" fetch -q --depth 1 \
+            https://github.com/atdr/github-boilerplate.git "$REF"
+          git -C "$dir" checkout -q FETCH_HEAD
+          echo "BOILERPLATE=$dir" >> "$GITHUB_ENV"
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - run: pip install -r "$BOILERPLATE/scripts/requirements-conventions.txt"
+      - run: python "$BOILERPLATE/scripts/check-conventions.py" .

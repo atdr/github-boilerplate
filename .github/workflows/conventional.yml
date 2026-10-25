@@ -1,0 +1,74 @@
+# Reusable: checks that a pull request will produce conventional history.
+#
+# Two checks, because they guard different things. On a squash merge the PR
+# title becomes the commit on main, and that is what release-please reads, so
+# an unconventional title silently drops the change from the changelog. The
+# per-commit check keeps the branch history readable for review, and catches a
+# repo that ever switches away from squash merging.
+#
+# The type list below is the single source of truth for every repo built from
+# this boilerplate. scripts/check-conventions.py holds the same list and fails
+# a commitlint config that disagrees with it.
+name: conventional
+
+on:
+  workflow_call:
+    inputs:
+      types:
+        description: Allowed conventional commit types, one per line
+        type: string
+        default: |
+          feat
+          fix
+          perf
+          refactor
+          test
+          docs
+          chore
+          ci
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  pr-title:
+    name: PR title
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    steps:
+      - uses: amannn/action-semantic-pull-request@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: ${{ inputs.types }}
+
+  commits:
+    name: commit messages
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      # Generated from the input rather than read from the repo, so a Python or
+      # TeX repo needs no commitlint config of its own. A Node repo's local
+      # commitlint.config.js must match; the conventions check enforces that.
+      - name: Write the commitlint config
+        env:
+          TYPES: ${{ inputs.types }}
+        run: |
+          types=$(printf '%s\n' "$TYPES" | sed '/^[[:space:]]*$/d' | jq -R . | jq -sc .)
+          cat > .commitlint.boilerplate.mjs <<EOF
+          export default {
+            extends: ['@commitlint/config-conventional'],
+            rules: { 'type-enum': [2, 'always', ${types}] },
+            // Dependabot bodies embed release-note URLs longer than
+            // body-max-line-length, and cannot be rewrapped.
+            ignores: [(message) => message.includes('Signed-off-by: dependabot[bot]')],
+          };
+          EOF
+      - uses: wagoid/commitlint-github-action@v6
+        with:
+          configFile: .commitlint.boilerplate.mjs

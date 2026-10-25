@@ -1,0 +1,14 @@
+# Installed by .github/workflows/markdown.yml, in the caller's repo. Kept here
+# rather than inline in the workflow so Dependabot bumps it by pull request.
+#
+# Pinned rather than floating: a formatter that changes its output in a patch
+# release turns unrelated pull requests red.
+mdformat==1.0.0
+# Tables. Core CommonMark has none, and without this every padded table is
+# reflowed into unpadded pipes.
+mdformat-gfm==1.0.0
+# YAML frontmatter, which skills in .claude/ carry. Without this mdformat
+# rewrites it into a horizontal rule and a heading. Never add a codeformatter
+# plugin (mdformat-black and the like): mdformat enables every installed one
+# and would reformat code inside fences.
+mdformat-frontmatter==2.1.2

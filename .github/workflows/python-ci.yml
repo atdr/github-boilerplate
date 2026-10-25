@@ -1,0 +1,96 @@
+# Reusable: CI for a Python package linted and formatted with ruff and tested
+# with pytest.
+#
+# What pytest measures under coverage lives in pyproject.toml
+# ([tool.coverage.run]), not on the command line here, so a developer running
+# `pytest --cov` locally measures what CI measures.
+name: python-ci
+
+on:
+  workflow_call:
+    inputs:
+      python-versions:
+        description: JSON array of Python versions to test
+        type: string
+        default: '["3.11", "3.12", "3.13", "3.14"]'
+      python-version:
+        description: The single version lint and coverage run on
+        type: string
+        default: "3.13"
+      install:
+        description: Command that installs the package and its dev tools
+        type: string
+        default: pip install -e ".[dev]"
+      coverage:
+        description: Run pytest under coverage and upload coverage.xml to Codecov
+        type: boolean
+        default: true
+    secrets:
+      CODECOV_TOKEN:
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: ruff
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ inputs.python-version }}
+      - run: ${{ inputs.install }}
+      - run: ruff check .
+      - run: ruff format --check .
+
+  test:
+    # Interpolated, not a fixed string: a matrix job with a static name produces
+    # several checks called the same thing.
+    name: pytest ${{ matrix.python-version }}
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ${{ fromJSON(inputs.python-versions) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: ${{ inputs.install }}
+      - run: pytest -q
+
+  # Reporting, not a gate: the matrix above is what proves the suite passes.
+  # One interpreter, because coverage of the same code on several says the same
+  # thing several times.
+  coverage:
+    name: coverage
+    if: inputs.coverage
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ inputs.python-version }}
+      - run: ${{ inputs.install }}
+      - run: pytest -q --cov --cov-report=xml
+      # Advisory only: a Codecov outage or a token missing from a fork says
+      # nothing about the change under review. The coverage run above stays
+      # blocking.
+      - uses: codecov/codecov-action@v7
+        continue-on-error: true
+        with:
+          files: ./coverage.xml
+          token: ${{ secrets.CODECOV_TOKEN }}
+          fail_ci_if_error: false

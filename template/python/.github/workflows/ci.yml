@@ -1,0 +1,43 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+# Superseded runs are cancelled on pull requests only. On main every commit
+# keeps its own result, so a red one points at the commit that broke it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  python:
+    uses: atdr/github-boilerplate/.github/workflows/python-ci.yml@v0.0.0 # x-release-please-version
+    with:
+      # Every version requires-python in pyproject.toml admits.
+      python-versions: '["3.11", "3.12", "3.13", "3.14"]'
+    secrets:
+      CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  # The one check branch protection requires from this workflow, so adding or
+  # dropping a Python version never touches the ruleset.
+  gate:
+    name: ci gate
+    if: always()
+    needs: [python]
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every job to have passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for result in $RESULTS; do
+            case "$result" in
+              failure|cancelled) echo "::error::a required job finished as $result"; exit 1 ;;
+            esac
+          done

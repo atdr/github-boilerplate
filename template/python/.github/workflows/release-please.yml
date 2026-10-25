@@ -1,0 +1,70 @@
+name: release-please
+
+on:
+  push:
+    branches: [main]
+
+# Scoped per job: the publish job must not hold a writable contents token.
+permissions: {}
+
+# Queued, never cancelled: a publish stopped halfway can leave a tag with no
+# package behind it.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  release-please:
+    name: maintain the release PR
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      # Inline release-type until the repo needs a release-please-config.json
+      # (extra-files, pre-1.0 bump rules, several packages).
+      #
+      # The release PR is opened with the default GITHUB_TOKEN, so its
+      # pull_request runs are created but held for "Approve and run". Branch
+      # protection requires them, so approve them before merging.
+      - uses: googleapis/release-please-action@v5
+        id: release
+        with:
+          release-type: python
+
+  # Gated on release-please's own output: a release made with GITHUB_TOKEN
+  # starts no `on: release` workflow.
+  #
+  # In this file, not a reusable workflow: PyPI's trusted publisher names the
+  # workflow file that publishes, and that has to be the caller's.
+  publish:
+    name: publish to PyPI
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      # A job-level block sets every unlisted scope to none, and checkout
+      # needs this one in a private repo.
+      contents: read
+      # No API token: PyPI trusts this workflow (owner/repo/environment) to
+      # mint its own short-lived credential via OIDC.
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Build
+        run: |
+          pip install build
+          python -m build
+      - uses: pypa/gh-action-pypi-publish@release/v1

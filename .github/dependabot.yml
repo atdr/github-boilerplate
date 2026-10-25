@@ -1,0 +1,34 @@
+version: 2
+updates:
+  # The actions in the reusable workflows and the template's workflows run in
+  # every caller, so a bump here changes what they run and must cut a release:
+  # `fix`, not `ci`. The template's workflow directories are listed one by one
+  # because `/` covers .github/workflows only; tests/ fails if one is missing.
+  - package-ecosystem: github-actions
+    directories:
+      - /
+      - /template/core/.github/workflows
+      - /template/node/.github/workflows
+      - /template/python/.github/workflows
+      - /template/tex/.github/workflows
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: fix(deps)
+  # Pins the reusable workflows install in callers (mdformat, PyYAML). Same
+  # reasoning: a bump reaches every caller, so it releases.
+  - package-ecosystem: pip
+    directory: /scripts
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: fix(deps)
+      prefix-development: chore(deps)
+  # This repo's own test and lint tools. Nobody downstream runs them.
+  - package-ecosystem: pip
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore(deps)
+      prefix-development: chore(deps)

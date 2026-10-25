@@ -1,0 +1,12 @@
+# actionlint 1.7.12 does not yet know the job context's workflow_* properties.
+# They are real: atdr/latex-build's callers resolve job.workflow_sha to
+# latex-build's own commit (run 36642823373 in atdr/latex-boilerplate). Scoped
+# to that one message in the two files that use it; drop this once actionlint
+# learns the property.
+paths:
+  .github/workflows/conventions.yml:
+    ignore:
+      - 'property "workflow_sha" is not defined'
+  .github/workflows/markdown.yml:
+    ignore:
+      - 'property "workflow_sha" is not defined'

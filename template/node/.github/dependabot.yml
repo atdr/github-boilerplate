@@ -1,0 +1,38 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    # `prefix` covers production dependencies, `prefix-development` the rest.
+    # A production bump changes what users install, so it lands as `fix` and
+    # release-please cuts a patch release with a changelog line. Dev tooling
+    # bumps stay `chore` and release-silent.
+    #
+    # A package with no runtime dependencies should set `prefix: chore(deps)`
+    # too: Dependabot cannot always tell a transitive dependency belongs to the
+    # dev tree, falls back to `prefix`, and would cut a release for a lockfile
+    # change nobody installs.
+    commit-message:
+      prefix: fix(deps)
+      prefix-development: chore(deps)
+    groups:
+      # `applies-to` defaults to version-updates. Production updates and every
+      # security update stay ungrouped, so each arrives as its own reviewable
+      # PR: a security group once filtered a high advisory out of its own job
+      # and still reported success.
+      dev-dependencies:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+  # Major-tag pins (@v7) absorb minor and patch releases on their own but never
+  # cross a major; this surfaces new majors as PRs. It also bumps the
+  # atdr/github-boilerplate reusable workflows, which are pinned to exact tags.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci

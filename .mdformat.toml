@@ -1,0 +1,12 @@
+# Needs Python 3.13 or later: `exclude` errors below it.
+wrap = 80
+number = true
+exclude = [
+  "CHANGELOG.md",
+  "CLAUDE.md",
+  ".venv/**",
+  ".pytest_cache/**",
+  # Placeholders like __REPO__ read as bold to mdformat. The template's
+  # Markdown is checked after apply.sh fills them in (tests/).
+  "template/**",
+]

@@ -1,0 +1,36 @@
+name: pull-request
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # The same reusable workflow every caller pins, run from this commit.
+  conventional:
+    if: github.event.pull_request.state == 'open'
+    uses: ./.github/workflows/conventional.yml
+
+  gate:
+    name: pull-request gate
+    if: always()
+    needs: [conventional]
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every job to have passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for result in $RESULTS; do
+            case "$result" in
+              failure|cancelled) echo "::error::a required job finished as $result"; exit 1 ;;
+            esac
+          done
