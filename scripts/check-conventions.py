@@ -270,6 +270,42 @@ def check_codecov(root: Path, f: Findings) -> None:
             )
 
 
+PRETTIER_CONFIGS = [
+    ".prettierrc",
+    ".prettierrc.json",
+    ".prettierrc.yaml",
+    ".prettierrc.yml",
+    ".prettierrc.js",
+    ".prettierrc.cjs",
+    ".prettierrc.mjs",
+    "prettier.config.js",
+    "prettier.config.cjs",
+    "prettier.config.mjs",
+]
+
+
+def check_markdown_formatter(root: Path, f: Findings) -> None:
+    # mdformat and Prettier format Markdown differently, so a repo running
+    # both would have each undo the other. mdformat owns it.
+    if not (root / ".mdformat.toml").is_file():
+        return
+    package = root / "package.json"
+    uses_prettier = any((root / name).is_file() for name in PRETTIER_CONFIGS) or (
+        package.is_file() and '"prettier":' in package.read_text()
+    )
+    if not uses_prettier:
+        return
+    ignore = root / ".prettierignore"
+    lines = ignore.read_text().splitlines() if ignore.is_file() else []
+    if not {"*.md", "**/*.md"} & {line.strip() for line in lines}:
+        f.add(
+            root,
+            "markdown-formatter",
+            "add *.md to .prettierignore: mdformat formats Markdown, and "
+            "Prettier would undo it",
+        )
+
+
 CHECKS = [
     check_workflows,
     check_dependabot,
@@ -278,6 +314,7 @@ CHECKS = [
     check_commit_types,
     check_release_please,
     check_codecov,
+    check_markdown_formatter,
 ]
 
 

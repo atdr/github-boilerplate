@@ -1,0 +1,10 @@
+# mdformat owns Markdown (.mdformat.toml, run by checks.yml). Prettier formats
+# it differently, so with both the two would keep undoing each other.
+*.md
+
+# Generated
+CHANGELOG.md
+package-lock.json
+node_modules/
+coverage/
+lcov.info

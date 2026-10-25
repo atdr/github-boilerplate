@@ -248,10 +248,13 @@ than failing.
 
 ## Markdown
 
-markdownlint-cli2 and mdformat, both run by `markdown.yml`. Prose wraps at 80
-columns; tables and code blocks are exempt. mdformat rewraps paragraphs, so
-editing a sentence never means rewrapping by hand. `CHANGELOG.md` (generated)
-and `CLAUDE.md` (a symlink) are excluded.
+markdownlint-cli2 and mdformat, both run by `markdown.yml`. mdformat owns
+Markdown formatting: a Node repo lists `*.md` in `.prettierignore`, because
+Prettier formats it differently and the two would undo each other
+[markdown-formatter]. Prose wraps at 80 columns; tables and code blocks are
+exempt. mdformat rewraps paragraphs, so editing a sentence never means
+rewrapping by hand. `CHANGELOG.md` (generated) and `CLAUDE.md` (a symlink) are
+excluded.
 
 This applies to committed `.md` files only. Prose posted to GitHub (issues, PRs,
 comments) is never hard wrapped: GitHub renders each newline as a line break.

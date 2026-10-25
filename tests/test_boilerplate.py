@@ -370,3 +370,14 @@ def test_first_release_is_pre_1_0():
     package = config["packages"]["."]
     assert package["initial-version"] == "0.1.0"
     assert package["bump-minor-pre-major"] is True
+
+
+def test_catches_prettier_and_mdformat_both_owning_markdown(repo):
+    (repo / ".prettierignore").write_text("node_modules/\n")
+    assert "markdown-formatter" in rules(repo)
+
+
+def test_prettier_without_mdformat_is_left_alone(repo):
+    (repo / ".prettierignore").write_text("node_modules/\n")
+    (repo / ".mdformat.toml").unlink()
+    assert "markdown-formatter" not in rules(repo)
