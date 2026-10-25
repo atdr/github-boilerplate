@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.0](https://github.com/atdr/github-boilerplate/compare/v0.1.0...v0.2.0) (2026-10-25)
+
+
+### Features
+
+* **workflows:** install uv projects from their lockfile in python-ci ([#8](https://github.com/atdr/github-boilerplate/issues/8)) ([3428401](https://github.com/atdr/github-boilerplate/commit/34284015f57b5b60b39be487266378ecdfa17720))
+
+
+### Bug Fixes
+
+* **template:** make the template coexist with Node repos' formatters ([#6](https://github.com/atdr/github-boilerplate/issues/6)) ([2102381](https://github.com/atdr/github-boilerplate/commit/2102381b81e347b518880d04dff1982d4e07d287))
+
 ## 0.1.0 (2026-10-25)
 
 
