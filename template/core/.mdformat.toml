@@ -5,5 +5,6 @@ exclude = [
   "CHANGELOG.md",
   "CLAUDE.md",
   ".venv/**",
+  ".pytest_cache/**",
   "node_modules/**",
 ]
