@@ -381,3 +381,11 @@ def test_prettier_without_mdformat_is_left_alone(repo):
     (repo / ".prettierignore").write_text("node_modules/\n")
     (repo / ".mdformat.toml").unlink()
     assert "markdown-formatter" not in rules(repo)
+
+
+@pytest.mark.parametrize("overlay", ["core", "node", "python"])
+def test_boilerplate_pins_move_together(overlay):
+    # One PR per boilerplate release, not one per pinned workflow file.
+    config = yaml.safe_load((ROOT / f"template/{overlay}/.github/dependabot.yml").read_text())
+    (actions,) = [u for u in config["updates"] if u["package-ecosystem"] == "github-actions"]
+    assert actions["groups"]["github-boilerplate"]["patterns"] == ["atdr/github-boilerplate*"]

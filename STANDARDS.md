@@ -185,7 +185,9 @@ repository variable, because a job-level `if:` can read `vars` but not
 
 - **Always a `github-actions` entry** [dependabot]. Major-tag pins (`@v7`)
   absorb minor and patch releases but never cross a major. It also bumps the
-  exact-tag pins on this repo's reusable workflows.
+  exact-tag pins on this repo's reusable workflows. Those pins are grouped:
+  Dependabot counts each workflow file as its own dependency, and ungrouped one
+  release would open a PR per file.
 - **Prefixes are chosen for release-please** [dependabot-prefix]. A runtime
   dependency bump changes what users install, so it is `fix` and cuts a release.
   Development bumps are `chore` and release-silent. Actions bumps are `ci`. A
