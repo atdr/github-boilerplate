@@ -400,3 +400,22 @@ def test_prerelease_runs_queue_per_version():
     workflow = yaml.safe_load((ROOT / "template/node/.github/workflows/publish-prerelease.yml").read_text())
     assert workflow["concurrency"]["group"] == "${{ github.workflow }}-${{ inputs.version }}"
     assert workflow["concurrency"]["cancel-in-progress"] is False
+
+
+@pytest.mark.parametrize("config", [".prettierrc.json5", ".prettierrc.toml", "prettier.config.ts"])
+def test_finds_prettier_from_any_config_file(tmp_path, config):
+    root = apply("core", tmp_path)
+    (root / config).write_text("")
+    assert "markdown-formatter" in rules(root)
+
+
+def test_finds_prettier_as_a_dependency_however_package_json_is_spaced(tmp_path):
+    root = apply("core", tmp_path)
+    (root / "package.json").write_text('{"devDependencies": {"prettier" : "^3.0.0"}}')
+    assert "markdown-formatter" in rules(root)
+
+
+def test_core_repo_without_prettier_is_left_alone(tmp_path):
+    root = apply("core", tmp_path)
+    (root / "package.json").write_text('{"devDependencies": {"eslint": "^9.0.0"}}')
+    assert "markdown-formatter" not in rules(root)

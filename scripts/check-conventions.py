@@ -13,6 +13,7 @@ Exits 1 if anything fails.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import sys
@@ -270,18 +271,26 @@ def check_codecov(root: Path, f: Findings) -> None:
             )
 
 
-PRETTIER_CONFIGS = [
-    ".prettierrc",
-    ".prettierrc.json",
-    ".prettierrc.yaml",
-    ".prettierrc.yml",
-    ".prettierrc.js",
-    ".prettierrc.cjs",
-    ".prettierrc.mjs",
-    "prettier.config.js",
-    "prettier.config.cjs",
-    "prettier.config.mjs",
-]
+def uses_prettier(root: Path) -> bool:
+    # Any config file Prettier reads (.prettierrc, .prettierrc.json5, .toml,
+    # prettier.config.ts and the rest), matched by pattern so a new format
+    # still counts. Then package.json, parsed rather than searched, for a
+    # `prettier` config key or dependency.
+    if any(root.glob(".prettierrc*")) or any(root.glob("prettier.config.*")):
+        return True
+    package = root / "package.json"
+    if not package.is_file():
+        return False
+    try:
+        data = json.loads(package.read_text())
+    except ValueError:
+        return False
+    if "prettier" in data:
+        return True
+    return any(
+        "prettier" in (data.get(field) or {})
+        for field in ("dependencies", "devDependencies", "peerDependencies", "optionalDependencies")
+    )
 
 
 def check_markdown_formatter(root: Path, f: Findings) -> None:
@@ -289,11 +298,7 @@ def check_markdown_formatter(root: Path, f: Findings) -> None:
     # both would have each undo the other. mdformat owns it.
     if not (root / ".mdformat.toml").is_file():
         return
-    package = root / "package.json"
-    uses_prettier = any((root / name).is_file() for name in PRETTIER_CONFIGS) or (
-        package.is_file() and '"prettier":' in package.read_text()
-    )
-    if not uses_prettier:
+    if not uses_prettier(root):
         return
     ignore = root / ".prettierignore"
     lines = ignore.read_text().splitlines() if ignore.is_file() else []
