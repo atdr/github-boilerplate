@@ -11,6 +11,15 @@ updates:
       prefix: fix
       prefix-development: chore
       include: scope
+    groups:
+      # `applies-to` defaults to version-updates. Production updates and every
+      # security update stay ungrouped, so each arrives as its own reviewable
+      # PR.
+      dev-dependencies:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
   # Major-tag pins (@v7) absorb minor and patch releases on their own but never
   # cross a major; this surfaces new majors as PRs. It also bumps the
   # atdr/github-boilerplate reusable workflows, which are pinned to exact tags.
