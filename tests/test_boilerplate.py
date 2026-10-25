@@ -180,7 +180,12 @@ def test_conventional_types_match_the_checker():
 
 def test_every_template_pin_is_rewritten_on_release():
     config = json.loads((ROOT / "release-please-config.json").read_text())
-    extra_files = set(config["packages"]["."]["extra-files"])
+    entries = config["packages"]["."]["extra-files"]
+    # A bare path to a .yml file gets release-please's YAML updater, which
+    # looks for a `version` key and ignores the x-release-please-version
+    # markers. Only the generic updater reads them.
+    assert all(isinstance(e, dict) and e.get("type") == "generic" for e in entries)
+    extra_files = {e["path"] for e in entries}
     pinned = set()
     for path in (ROOT / "template").rglob("*.yml"):
         for line in path.read_text().splitlines():

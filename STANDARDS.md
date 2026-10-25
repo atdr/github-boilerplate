@@ -203,6 +203,7 @@ Applied by `scripts/configure.sh`.
 | Squash commit title / message       | PR title / commit messages |
 | Delete branch on merge              | On                         |
 | Default workflow token              | Read                       |
+| Actions may create PRs              | On (for release-please)    |
 | Dependabot alerts, security updates | On                         |
 | Secret scanning, push protection    | On (public repos)          |
 | Private vulnerability reporting     | On (public repos)          |

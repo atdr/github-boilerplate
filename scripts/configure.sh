@@ -48,9 +48,12 @@ run gh api -X PATCH "repos/$repo" --silent \
 	-f squash_merge_commit_title=PR_TITLE \
 	-f squash_merge_commit_message=COMMIT_MESSAGES
 
-# Read-only by default; workflows widen it per job.
+# Read-only by default; workflows widen it per job. GitHub Actions may open
+# PRs, because release-please opens its release PR with GITHUB_TOKEN. New repos
+# default this off, and release-please then fails after pushing its branch.
 run gh api -X PUT "repos/$repo/actions/permissions/workflow" --silent \
-	-f default_workflow_permissions=read
+	-f default_workflow_permissions=read \
+	-F can_approve_pull_request_reviews=true
 
 run gh api -X PUT "repos/$repo/vulnerability-alerts" --silent
 run gh api -X PUT "repos/$repo/automated-security-fixes" --silent
