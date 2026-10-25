@@ -100,16 +100,21 @@ def check_workflows(root: Path, f: Findings) -> None:
         # Superseded runs may be cancelled on pull requests only. On main every
         # commit keeps its own result, and a release, publish or deploy
         # cancelled halfway can leave a tag with no package.
-        concurrency = workflow.get("concurrency")
-        if isinstance(concurrency, dict) and concurrency.get("cancel-in-progress") is True:
-            if not triggers(workflow) <= PR_ONLY_EVENTS:
-                f.add(
-                    path,
-                    "concurrency",
-                    "cancel-in-progress: true on a workflow with non-PR "
-                    "triggers; use ${{ github.event_name == 'pull_request' }} "
-                    "for CI, or false to queue releases and deploys",
-                )
+        if not triggers(workflow) <= PR_ONLY_EVENTS:
+            blocks = [("workflow", workflow.get("concurrency"))] + [
+                (f"job {job_id!r}", job.get("concurrency"))
+                for job_id, job in (workflow.get("jobs") or {}).items()
+            ]
+            for where, concurrency in blocks:
+                if isinstance(concurrency, dict) and concurrency.get("cancel-in-progress") is True:
+                    f.add(
+                        path,
+                        "concurrency",
+                        f"{where}: cancel-in-progress: true on a workflow with "
+                        "non-PR triggers; use ${{ github.event_name == "
+                        "'pull_request' }} for CI, or false to queue releases "
+                        "and deploys",
+                    )
 
         # A types override would split the one commit type list in two.
         for job_id, job in (workflow.get("jobs") or {}).items():
