@@ -298,6 +298,7 @@ def test_every_gate_is_the_same_gate():
                 gates.append((path.relative_to(ROOT), body))
     assert len(gates) > 1
     first = gates[0][1]
+    assert first["if"] == "${{ !cancelled() }}"
     for path, body in gates:
         assert body == first, path
 

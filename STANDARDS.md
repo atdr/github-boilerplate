@@ -92,6 +92,10 @@ Each caller workflow ends in one gate job (`ci gate`, `checks gate`,
 `pull-request gate`) that `needs:` every other job and fails if any failed or
 was cancelled. Branch protection requires the gates and nothing else.
 
+A gate runs `if: ${{ !cancelled() }}`, not `always()`. A run superseded by a
+newer one is cancelled, and with `always()` its gate would still report a
+failure on the same commit the newer run is checking.
+
 **Why:** the Node matrix follows LTS, so its job names change when a line enters
 or leaves LTS. Requiring those names would break the ruleset each time, and
 requiring jobs inside another repository's reusable workflow ties the ruleset to

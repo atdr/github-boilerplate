@@ -24,7 +24,9 @@ jobs:
   # The one check branch protection requires from this workflow.
   gate:
     name: checks gate
-    if: always()
+    # Not always(): a run superseded by a newer one is cancelled, and its gate
+    # would report a failure on the same commit the newer run is checking.
+    if: ${{ !cancelled() }}
     needs: [markdown, conventions]
     timeout-minutes: 5
     runs-on: ubuntu-latest
