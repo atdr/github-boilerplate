@@ -1,0 +1,11 @@
+version: 2
+updates:
+  # Major-tag pins (@v7) absorb minor and patch releases on their own but never
+  # cross a major; this surfaces new majors as PRs. It also bumps the
+  # atdr/github-boilerplate reusable workflows, which are pinned to exact tags.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
