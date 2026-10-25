@@ -34,10 +34,13 @@ esac
 }
 target=$(cd "$target" && pwd)
 
-# owner/repo from the origin remote, falling back to the directory name.
+# owner/repo from a GitHub origin remote, falling back to the directory name.
 remote=$(git -C "$target" remote get-url origin 2>/dev/null || true)
-slug=$(printf '%s' "$remote" | sed -E 's#^.*github\.com[:/]##; s#\.git$##')
-if [ -n "$slug" ] && [ "${slug#*/}" != "$slug" ]; then
+slug=
+case "$remote" in
+*github.com[:/]*/*) slug=$(printf '%s' "$remote" | sed -E 's#^.*github\.com[:/]##; s#\.git$##') ;;
+esac
+if [ -n "$slug" ]; then
 	owner=${slug%%/*}
 	repo=${slug#*/}
 else
@@ -78,13 +81,24 @@ while IFS="$(printf '\t')" read -r rel src; do
 	else
 		sed -e "s#__OWNER__#$owner#g" \
 			-e "s#__REPO__#$repo#g" \
-			-e "s#@v0\.0\.0 \# x-release-please-version#@$ref#g" \
+			-e "s#@v[0-9][0-9.]* \# x-release-please-version#@$ref#g" \
 			-e "s#Copyright (c) [0-9]\{4\}#Copyright (c) $(date +%Y)#" \
 			"$src/$rel" >"$dest"
 		[ ! -x "$src/$rel" ] || chmod +x "$dest"
 	fi
 	copied+=("$rel")
 done <<<"$winners"
+
+# The core README's CI and coverage badges point at ci.yml, which only the
+# language overlays ship. Drop them from a README this run wrote.
+if [ ! -f "$target/.github/workflows/ci.yml" ]; then
+	for rel in "${copied[@]}"; do
+		if [ "$rel" = README.md ]; then
+			sed -e '/^\[!\[CI\]/d' -e '/^\[!\[Coverage\]/d' "$target/README.md" >"$target/README.md.tmp"
+			mv "$target/README.md.tmp" "$target/README.md"
+		fi
+	done
+fi
 
 echo "Applied $overlay to $owner/$repo at $target"
 echo "  copied: ${#copied[@]} file(s)"
