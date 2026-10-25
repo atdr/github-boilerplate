@@ -1,0 +1,2 @@
+# Installed by .github/workflows/conventions.yml to run check-conventions.py.
+pyyaml==6.0.3
