@@ -1,0 +1,39 @@
+name: checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # The same reusable workflows every caller pins, run from this commit, so a
+  # change to one is exercised here before any caller can pin it.
+  markdown:
+    uses: ./.github/workflows/markdown.yml
+
+  conventions:
+    uses: ./.github/workflows/conventions.yml
+
+  gate:
+    name: checks gate
+    if: always()
+    needs: [markdown, conventions]
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every job to have passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for result in $RESULTS; do
+            case "$result" in
+              failure|cancelled) echo "::error::a required job finished as $result"; exit 1 ;;
+            esac
+          done

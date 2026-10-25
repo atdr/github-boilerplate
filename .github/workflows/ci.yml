@@ -1,0 +1,76 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  actionlint:
+    name: actionlint
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - run: pip install -r requirements-dev.txt
+      # The template workflows too: they are what callers actually run.
+      - run: actionlint .github/workflows/*.yml template/*/.github/workflows/*.yml
+
+  shellcheck:
+    name: shellcheck
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # Preinstalled on GitHub's Ubuntu runners. Husky hooks carry no shebang,
+      # so their shell is named.
+      - run: shellcheck scripts/*.sh
+      - run: shellcheck --shell=sh template/node/.husky/*
+
+  test:
+    name: pytest
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - run: >-
+          pip install -r requirements-dev.txt
+          -r scripts/requirements-conventions.txt
+          -r scripts/requirements-markdown.txt
+      - run: pytest -q
+
+  gate:
+    name: ci gate
+    if: always()
+    needs: [actionlint, shellcheck, test]
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every job to have passed
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          for result in $RESULTS; do
+            case "$result" in
+              failure|cancelled) echo "::error::a required job finished as $result"; exit 1 ;;
+            esac
+          done
