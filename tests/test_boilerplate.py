@@ -310,12 +310,14 @@ def test_settings_allow_squash_merges_only():
     assert repository["squash_merge_commit_title"] == "PR_TITLE"
 
 
-def test_settings_let_release_please_open_its_pr():
-    workflow = json.loads((ROOT / "settings/actions-workflow.json").read_text())
-    assert workflow == {
+def test_only_release_please_repos_let_actions_open_prs():
+    base = json.loads((ROOT / "settings/actions-workflow.json").read_text())
+    assert base == {
         "default_workflow_permissions": "read",
-        "can_approve_pull_request_reviews": True,
+        "can_approve_pull_request_reviews": False,
     }
+    extra = json.loads((ROOT / "settings/actions-workflow-release-please.json").read_text())
+    assert extra == {"can_approve_pull_request_reviews": True}
 
 
 def test_configure_sends_every_settings_file():

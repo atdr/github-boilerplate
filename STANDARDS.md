@@ -199,9 +199,10 @@ Tracked as data in `settings/` and applied by `scripts/configure.sh`;
 `configure.sh <repo> <overlay> --diff` reports where a repo has drifted from
 them.
 
-Actions may create PRs because release-please opens its release PR with
-`GITHUB_TOKEN`. New repos default this off, and release-please then fails after
-pushing its branch.
+Actions may create PRs only in a repo that runs release-please, which opens its
+release PR with `GITHUB_TOKEN`. New repos default this off, and release-please
+then fails after pushing its branch. Everywhere else it stays off, so no
+workflow can open or approve a PR it was not built to.
 
 | Setting                             | Value                      |
 | ----------------------------------- | -------------------------- |
@@ -209,7 +210,7 @@ pushing its branch.
 | Squash commit title / message       | PR title / commit messages |
 | Delete branch on merge              | On                         |
 | Default workflow token              | Read                       |
-| Actions may create PRs              | On (for release-please)    |
+| Actions may create PRs              | Only with release-please   |
 | Dependabot alerts, security updates | On                         |
 | Secret scanning, push protection    | On (public repos)          |
 | Private vulnerability reporting     | On (public repos)          |

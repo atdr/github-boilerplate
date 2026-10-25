@@ -10,6 +10,7 @@
 #
 # Prints what it would change, and changes nothing, unless --apply is given.
 # --diff compares the repo's live merge and Actions settings with settings/.
+# Actions may open PRs only in a repo whose workflows run release-please.
 # Needs an authenticated gh. Written for bash 3.2 (macOS's stock /bin/bash).
 
 set -euo pipefail
@@ -38,18 +39,40 @@ drift() {
 		| "  \(.key): \($live[.key]) -> \(.value)"'
 }
 
+# A repo running release-please lets Actions open PRs, because release-please
+# opens its release PR with GITHUB_TOKEN; every other repo keeps it off.
+uses_release_please=false
+# A repo with no workflows folder answers 404, and gh prints that error body
+# to stdout, so its output only counts when the call succeeded.
+workflows=$(gh api "repos/$repo/contents/.github/workflows" --jq '.[].path' 2>/dev/null) || workflows=
+for path in $workflows; do
+	if gh api "repos/$repo/contents/$path" --jq .content | base64 --decode |
+		grep -q 'googleapis/release-please-action'; then
+		uses_release_please=true
+		break
+	fi
+done
+workflow_settings=$(mktemp)
+trap 'rm -f "$workflow_settings"' EXIT
+if [ "$uses_release_please" = true ]; then
+	jq -s '.[0] * .[1]' "$settings/actions-workflow.json" \
+		"$settings/actions-workflow-release-please.json" >"$workflow_settings"
+else
+	cp "$settings/actions-workflow.json" "$workflow_settings"
+fi
+
 if [ "$mode" = --diff ]; then
 	# Command substitution drops trailing newlines, so print each part rather
 	# than concatenating them.
 	repository=$(drift "repos/$repo" "$settings/repository.json")
-	workflow=$(drift "repos/$repo/actions/permissions/workflow" "$settings/actions-workflow.json")
+	workflow=$(drift "repos/$repo/actions/permissions/workflow" "$workflow_settings")
 	if [ -n "$repository$workflow" ]; then
 		echo "$repo differs from settings/ (live -> tracked):"
 		[ -z "$repository" ] || echo "$repository"
 		[ -z "$workflow" ] || echo "$workflow"
 		exit 1
 	fi
-	echo "$repo matches settings/repository.json and settings/actions-workflow.json"
+	echo "$repo matches settings/ (release-please: $uses_release_please)"
 	exit 0
 fi
 
@@ -67,8 +90,9 @@ visibility=$(gh api "repos/$repo" --jq .visibility)
 echo "$repo is $visibility"
 
 run gh api -X PATCH "repos/$repo" --silent --input "$settings/repository.json"
+echo "runs release-please: $uses_release_please (Actions may open PRs only if so)"
 run gh api -X PUT "repos/$repo/actions/permissions/workflow" --silent \
-	--input "$settings/actions-workflow.json"
+	--input "$workflow_settings"
 
 run gh api -X PUT "repos/$repo/vulnerability-alerts" --silent
 run gh api -X PUT "repos/$repo/automated-security-fixes" --silent
