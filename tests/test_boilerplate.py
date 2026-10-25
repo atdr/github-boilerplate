@@ -389,3 +389,14 @@ def test_boilerplate_pins_move_together(overlay):
     config = yaml.safe_load((ROOT / f"template/{overlay}/.github/dependabot.yml").read_text())
     (actions,) = [u for u in config["updates"] if u["package-ecosystem"] == "github-actions"]
     assert actions["groups"]["github-boilerplate"]["patterns"] == ["atdr/github-boilerplate*"]
+
+
+def test_catches_a_placeholder_copied_by_hand(repo):
+    shutil.copy(ROOT / "template/core/.github/FUNDING.yml", repo / ".github/FUNDING.yml")
+    assert "placeholders" in rules(repo)
+
+
+def test_prerelease_runs_queue_per_version():
+    workflow = yaml.safe_load((ROOT / "template/node/.github/workflows/publish-prerelease.yml").read_text())
+    assert workflow["concurrency"]["group"] == "${{ github.workflow }}-${{ inputs.version }}"
+    assert workflow["concurrency"]["cancel-in-progress"] is False

@@ -306,6 +306,26 @@ def check_markdown_formatter(root: Path, f: Findings) -> None:
         )
 
 
+PLACEHOLDERS = re.compile(r"__(OWNER|REPO)__")
+
+
+def check_placeholders(root: Path, f: Findings) -> None:
+    # apply.sh fills these in; one left behind means a file was copied from
+    # template/ by hand. Only the paths the template writes placeholders into.
+    paths = [root / "README.md", root / "SECURITY.md"]
+    github = root / ".github"
+    if github.is_dir():
+        paths += [p for p in github.rglob("*") if p.is_file()]
+    for path in paths:
+        if path.is_file() and PLACEHOLDERS.search(path.read_text(errors="ignore")):
+            f.add(
+                path,
+                "placeholders",
+                "unfilled __OWNER__ or __REPO__; copy template files with "
+                "apply.sh, which fills them in",
+            )
+
+
 CHECKS = [
     check_workflows,
     check_dependabot,
@@ -315,6 +335,7 @@ CHECKS = [
     check_release_please,
     check_codecov,
     check_markdown_formatter,
+    check_placeholders,
 ]
 
 

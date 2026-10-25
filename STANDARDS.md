@@ -82,8 +82,11 @@ writable `contents` token.
   every commit keeps its own result, so a red run points at the commit that
   broke it.
 - **Release, publish, deploy, and scheduled jobs that write:** a fixed group
-  with `cancel-in-progress: false`, so runs queue. A publish cancelled halfway
-  can leave a tag with no package.
+  with `cancel-in-progress: false`, so runs queue. GitHub keeps only one pending
+  run per group and replaces it with a newer one, which is fine when the newer
+  run covers the older (a release from `main`). Where each run is distinct (a
+  prerelease of a given version), key the group by it. A publish cancelled
+  halfway can leave a tag with no package.
 - **PR only workflows** (title checks) may cancel unconditionally.
 
 ### Gates
