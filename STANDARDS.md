@@ -82,8 +82,11 @@ writable `contents` token.
   every commit keeps its own result, so a red run points at the commit that
   broke it.
 - **Release, publish, deploy, and scheduled jobs that write:** a fixed group
-  with `cancel-in-progress: false`, so runs queue. A publish cancelled halfway
-  can leave a tag with no package.
+  with `cancel-in-progress: false`, so runs queue. GitHub keeps only one pending
+  run per group and replaces it with a newer one, which is fine when the newer
+  run covers the older (a release from `main`). Where each run is distinct (a
+  prerelease of a given version), key the group by it. A publish cancelled
+  halfway can leave a tag with no package.
 - **PR only workflows** (title checks) may cancel unconditionally.
 
 ### Gates
@@ -185,7 +188,9 @@ repository variable, because a job-level `if:` can read `vars` but not
 
 - **Always a `github-actions` entry** [dependabot]. Major-tag pins (`@v7`)
   absorb minor and patch releases but never cross a major. It also bumps the
-  exact-tag pins on this repo's reusable workflows.
+  exact-tag pins on this repo's reusable workflows. Those pins are grouped:
+  Dependabot counts each workflow file as its own dependency, and ungrouped one
+  release would open a PR per file.
 - **Prefixes are chosen for release-please** [dependabot-prefix]. A runtime
   dependency bump changes what users install, so it is `fix` and cuts a release.
   Development bumps are `chore` and release-silent. Actions bumps are `ci`. A
@@ -248,10 +253,13 @@ than failing.
 
 ## Markdown
 
-markdownlint-cli2 and mdformat, both run by `markdown.yml`. Prose wraps at 80
-columns; tables and code blocks are exempt. mdformat rewraps paragraphs, so
-editing a sentence never means rewrapping by hand. `CHANGELOG.md` (generated)
-and `CLAUDE.md` (a symlink) are excluded.
+markdownlint-cli2 and mdformat, both run by `markdown.yml`. mdformat owns
+Markdown formatting: a Node repo lists `*.md` in `.prettierignore`, because
+Prettier formats it differently and the two would undo each other
+[markdown-formatter]. Prose wraps at 80 columns; tables and code blocks are
+exempt. mdformat rewraps paragraphs, so editing a sentence never means
+rewrapping by hand. `CHANGELOG.md` (generated) and `CLAUDE.md` (a symlink) are
+excluded.
 
 This applies to committed `.md` files only. Prose posted to GitHub (issues, PRs,
 comments) is never hard wrapped: GitHub renders each newline as a line break.

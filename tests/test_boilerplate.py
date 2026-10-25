@@ -370,3 +370,52 @@ def test_first_release_is_pre_1_0():
     package = config["packages"]["."]
     assert package["initial-version"] == "0.1.0"
     assert package["bump-minor-pre-major"] is True
+
+
+def test_catches_prettier_and_mdformat_both_owning_markdown(repo):
+    (repo / ".prettierignore").write_text("node_modules/\n")
+    assert "markdown-formatter" in rules(repo)
+
+
+def test_prettier_without_mdformat_is_left_alone(repo):
+    (repo / ".prettierignore").write_text("node_modules/\n")
+    (repo / ".mdformat.toml").unlink()
+    assert "markdown-formatter" not in rules(repo)
+
+
+@pytest.mark.parametrize("overlay", ["core", "node", "python"])
+def test_boilerplate_pins_move_together(overlay):
+    # One PR per boilerplate release, not one per pinned workflow file.
+    config = yaml.safe_load((ROOT / f"template/{overlay}/.github/dependabot.yml").read_text())
+    (actions,) = [u for u in config["updates"] if u["package-ecosystem"] == "github-actions"]
+    assert actions["groups"]["github-boilerplate"]["patterns"] == ["atdr/github-boilerplate*"]
+
+
+def test_catches_a_placeholder_copied_by_hand(repo):
+    shutil.copy(ROOT / "template/core/.github/FUNDING.yml", repo / ".github/FUNDING.yml")
+    assert "placeholders" in rules(repo)
+
+
+def test_prerelease_runs_queue_per_version():
+    workflow = yaml.safe_load((ROOT / "template/node/.github/workflows/publish-prerelease.yml").read_text())
+    assert workflow["concurrency"]["group"] == "${{ github.workflow }}-${{ inputs.version }}"
+    assert workflow["concurrency"]["cancel-in-progress"] is False
+
+
+@pytest.mark.parametrize("config", [".prettierrc.json5", ".prettierrc.toml", "prettier.config.ts"])
+def test_finds_prettier_from_any_config_file(tmp_path, config):
+    root = apply("core", tmp_path)
+    (root / config).write_text("")
+    assert "markdown-formatter" in rules(root)
+
+
+def test_finds_prettier_as_a_dependency_however_package_json_is_spaced(tmp_path):
+    root = apply("core", tmp_path)
+    (root / "package.json").write_text('{"devDependencies": {"prettier" : "^3.0.0"}}')
+    assert "markdown-formatter" in rules(root)
+
+
+def test_core_repo_without_prettier_is_left_alone(tmp_path):
+    root = apply("core", tmp_path)
+    (root / "package.json").write_text('{"devDependencies": {"eslint": "^9.0.0"}}')
+    assert "markdown-formatter" not in rules(root)

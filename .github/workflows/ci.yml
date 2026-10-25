@@ -58,12 +58,34 @@ jobs:
           -r scripts/requirements-markdown.txt
       - run: pytest -q
 
+  # Node repos run Prettier over everything it understands, YAML included, with
+  # the overlay's own .prettierrc.json. A template file Prettier would rewrite
+  # fails `format:check` in every repo that applies it.
+  prettier:
+    name: prettier
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Apply the Node overlay
+        run: |
+          mkdir "$RUNNER_TEMP/node"
+          scripts/apply.sh node "$RUNNER_TEMP/node"
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+      - name: Check it is Prettier clean
+        working-directory: ${{ runner.temp }}/node
+        run: npx --yes prettier@3.9.10 --check .
+
   gate:
     name: ci gate
     # Not always(): a run superseded by a newer one is cancelled, and its gate
     # would report a failure on the same commit the newer run is checking.
     if: ${{ !cancelled() }}
-    needs: [actionlint, shellcheck, test]
+    needs: [actionlint, shellcheck, test, prettier]
     timeout-minutes: 5
     runs-on: ubuntu-latest
     steps:

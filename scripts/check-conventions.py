@@ -13,6 +13,7 @@ Exits 1 if anything fails.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import sys
@@ -270,6 +271,66 @@ def check_codecov(root: Path, f: Findings) -> None:
             )
 
 
+def uses_prettier(root: Path) -> bool:
+    # Any config file Prettier reads (.prettierrc, .prettierrc.json5, .toml,
+    # prettier.config.ts and the rest), matched by pattern so a new format
+    # still counts. Then package.json, parsed rather than searched, for a
+    # `prettier` config key or dependency.
+    if any(root.glob(".prettierrc*")) or any(root.glob("prettier.config.*")):
+        return True
+    package = root / "package.json"
+    if not package.is_file():
+        return False
+    try:
+        data = json.loads(package.read_text())
+    except ValueError:
+        return False
+    if "prettier" in data:
+        return True
+    return any(
+        "prettier" in (data.get(field) or {})
+        for field in ("dependencies", "devDependencies", "peerDependencies", "optionalDependencies")
+    )
+
+
+def check_markdown_formatter(root: Path, f: Findings) -> None:
+    # mdformat and Prettier format Markdown differently, so a repo running
+    # both would have each undo the other. mdformat owns it.
+    if not (root / ".mdformat.toml").is_file():
+        return
+    if not uses_prettier(root):
+        return
+    ignore = root / ".prettierignore"
+    lines = ignore.read_text().splitlines() if ignore.is_file() else []
+    if not {"*.md", "**/*.md"} & {line.strip() for line in lines}:
+        f.add(
+            root,
+            "markdown-formatter",
+            "add *.md to .prettierignore: mdformat formats Markdown, and "
+            "Prettier would undo it",
+        )
+
+
+PLACEHOLDERS = re.compile(r"__(OWNER|REPO)__")
+
+
+def check_placeholders(root: Path, f: Findings) -> None:
+    # apply.sh fills these in; one left behind means a file was copied from
+    # template/ by hand. Only the paths the template writes placeholders into.
+    paths = [root / "README.md", root / "SECURITY.md"]
+    github = root / ".github"
+    if github.is_dir():
+        paths += [p for p in github.rglob("*") if p.is_file()]
+    for path in paths:
+        if path.is_file() and PLACEHOLDERS.search(path.read_text(errors="ignore")):
+            f.add(
+                path,
+                "placeholders",
+                "unfilled __OWNER__ or __REPO__; copy template files with "
+                "apply.sh, which fills them in",
+            )
+
+
 CHECKS = [
     check_workflows,
     check_dependabot,
@@ -278,6 +339,8 @@ CHECKS = [
     check_commit_types,
     check_release_please,
     check_codecov,
+    check_markdown_formatter,
+    check_placeholders,
 ]
 
 
