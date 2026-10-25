@@ -237,8 +237,10 @@ than failing.
 - **`.github/pull_request_template.md`**: What changed, Why, Checks, Test plan.
 - **Issue forms** in YAML, with blank issues off.
 - **`FUNDING.yml`**.
-- **README** badges in this order: package, last commit, CI, coverage. Then
-  install, quick start, configuration, development, contributing, license.
+- **README** badges in this order: package, last commit, CI, coverage. All from
+  shields.io with `style=flat-square`, lowercase labels except `CI`, and the CI
+  badge on `branch=main` so a failing PR does not turn it red. Then install,
+  quick start, configuration, development, contributing, license.
 
 ## Markdown
 

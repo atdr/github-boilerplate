@@ -1,8 +1,8 @@
 # github-boilerplate
 
-[![GitHub release](https://img.shields.io/github/v/release/atdr/github-boilerplate?include_prereleases)](https://github.com/atdr/github-boilerplate/releases)
-[![GitHub last commit](https://img.shields.io/github/last-commit/atdr/github-boilerplate)](https://github.com/atdr/github-boilerplate/commits/main)
-[![CI](https://github.com/atdr/github-boilerplate/actions/workflows/ci.yml/badge.svg)](https://github.com/atdr/github-boilerplate/actions/workflows/ci.yml)
+[![GitHub release](https://img.shields.io/github/v/release/atdr/github-boilerplate?style=flat-square&label=release)](https://github.com/atdr/github-boilerplate/releases)
+[![GitHub last commit](https://img.shields.io/github/last-commit/atdr/github-boilerplate.svg?style=flat-square)](https://github.com/atdr/github-boilerplate)
+[![CI](https://img.shields.io/github/actions/workflow/status/atdr/github-boilerplate/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/atdr/github-boilerplate/actions/workflows/ci.yml)
 
 Reusable GitHub Actions workflows, a repository template and the scripts that
 apply them: the setup shared by atdr's repositories, written down once.

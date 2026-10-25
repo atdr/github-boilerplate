@@ -324,3 +324,18 @@ def test_configure_sends_every_settings_file():
     script = (ROOT / "scripts/configure.sh").read_text()
     for path in (ROOT / "settings").glob("*.json"):
         assert f"$settings/{path.name}" in script, path.name
+
+
+BADGE = re.compile(r"^\[!\[[^\]]+\]\((?P<image>[^)]+)\)\]\([^)]+\)$")
+
+
+@pytest.mark.parametrize("readme", ["README.md", "template/core/README.md"])
+def test_badges_are_flat_square_shields(readme):
+    badges = [m for line in (ROOT / readme).read_text().splitlines() if (m := BADGE.match(line))]
+    assert badges
+    for badge in badges:
+        image = badge["image"]
+        assert image.startswith("https://img.shields.io/"), image
+        assert "style=flat-square" in image, image
+        if "/actions/workflow/status/" in image:
+            assert "branch=main" in image, image
