@@ -1,6 +1,6 @@
 gitignore: true
 globs:
-  - "**/*.md"
+  - '**/*.md'
 config:
   # 80 columns for prose. Tables and code blocks are exempt: wrapping either
   # breaks it. mdformat (.mdformat.toml) rewraps paragraphs to the same width.

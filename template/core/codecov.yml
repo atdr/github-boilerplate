@@ -10,5 +10,5 @@ coverage:
       default:
         informational: true
 comment:
-  layout: "condensed_header, diff, files"
+  layout: 'condensed_header, diff, files'
   require_changes: true
