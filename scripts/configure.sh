@@ -3,15 +3,19 @@
 # rules, security features, the default workflow token, the main ruleset, and
 # the deployment environments its overlay publishes from.
 #
-# Usage: scripts/configure.sh <owner/repo> <node|python|tex|core> [--apply]
+# Usage: scripts/configure.sh <owner/repo> <node|python|tex|core> [--apply|--diff]
+#
+# The settings themselves are data in settings/, and STANDARDS.md says why
+# each has its value. This script only sends them.
 #
 # Prints what it would change, and changes nothing, unless --apply is given.
+# --diff compares the repo's live merge and Actions settings with settings/.
 # Needs an authenticated gh. Written for bash 3.2 (macOS's stock /bin/bash).
 
 set -euo pipefail
 
 usage() {
-	echo "usage: $0 <owner/repo> <node|python|tex|core> [--apply]" >&2
+	echo "usage: $0 <owner/repo> <node|python|tex|core> [--apply|--diff]" >&2
 	exit 2
 }
 
@@ -20,9 +24,31 @@ repo=$1
 overlay=$2
 mode=${3:-}
 case "$overlay" in node | python | tex | core) ;; *) usage ;; esac
-[ -z "$mode" ] || [ "$mode" = --apply ] || usage
+[ -z "$mode" ] || [ "$mode" = --apply ] || [ "$mode" = --diff ] || usage
 
 here=$(cd "$(dirname "$0")/.." && pwd)
+settings=$here/settings
+
+# Each tracked key whose live value differs, as `key: live -> tracked`.
+drift() {
+	local endpoint=$1 file=$2
+	gh api "$endpoint" | jq -r --slurpfile want "$file" '
+		. as $live | $want[0] | to_entries[]
+		| select($live[.key] != .value)
+		| "  \(.key): \($live[.key]) -> \(.value)"'
+}
+
+if [ "$mode" = --diff ]; then
+	out=$(drift "repos/$repo" "$settings/repository.json")
+	out=$out$(drift "repos/$repo/actions/permissions/workflow" "$settings/actions-workflow.json")
+	if [ -n "$out" ]; then
+		echo "$repo differs from settings/ (live -> tracked):"
+		echo "$out"
+		exit 1
+	fi
+	echo "$repo matches settings/repository.json and settings/actions-workflow.json"
+	exit 0
+fi
 
 run() {
 	if [ "$mode" = --apply ]; then
@@ -37,33 +63,15 @@ run() {
 visibility=$(gh api "repos/$repo" --jq .visibility)
 echo "$repo is $visibility"
 
-# Squash only, titled from the PR: the PR title is the commit on main, and
-# release-please reads it.
-run gh api -X PATCH "repos/$repo" --silent \
-	-F allow_squash_merge=true \
-	-F allow_merge_commit=false \
-	-F allow_rebase_merge=false \
-	-F delete_branch_on_merge=true \
-	-F allow_update_branch=true \
-	-f squash_merge_commit_title=PR_TITLE \
-	-f squash_merge_commit_message=COMMIT_MESSAGES
-
-# Read-only by default; workflows widen it per job. GitHub Actions may open
-# PRs, because release-please opens its release PR with GITHUB_TOKEN. New repos
-# default this off, and release-please then fails after pushing its branch.
+run gh api -X PATCH "repos/$repo" --silent --input "$settings/repository.json"
 run gh api -X PUT "repos/$repo/actions/permissions/workflow" --silent \
-	-f default_workflow_permissions=read \
-	-F can_approve_pull_request_reviews=true
+	--input "$settings/actions-workflow.json"
 
 run gh api -X PUT "repos/$repo/vulnerability-alerts" --silent
 run gh api -X PUT "repos/$repo/automated-security-fixes" --silent
 
 if [ "$visibility" = public ]; then
-	run gh api -X PATCH "repos/$repo" --silent --input - <<'JSON'
-{"security_and_analysis": {
-  "secret_scanning": {"status": "enabled"},
-  "secret_scanning_push_protection": {"status": "enabled"}}}
-JSON
+	run gh api -X PATCH "repos/$repo" --silent --input "$settings/security-public.json"
 	run gh api -X PUT "repos/$repo/private-vulnerability-reporting" --silent
 	run gh api -X PATCH "repos/$repo/code-scanning/default-setup" --silent \
 		-f state=configured
@@ -78,7 +86,7 @@ JSON
 		if $has_ci then
 			(.rules[] | select(.type == "required_status_checks")
 				.parameters.required_status_checks) += [{"context": "ci gate", "integration_id": 15368}]
-		else . end' "$here/rulesets/main.json")
+		else . end' "$settings/ruleset-main.json")
 	echo "requires: pull-request gate, checks gate$([ "$has_ci" = false ] || echo ', ci gate')"
 	existing=$(gh api "repos/$repo/rulesets" --jq '.[] | select(.name == "main") | .id')
 	if [ -n "$existing" ]; then

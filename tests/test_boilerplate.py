@@ -205,7 +205,7 @@ def gate_names(path: Path) -> set[str]:
 
 
 def test_ruleset_requires_exactly_the_core_gates():
-    ruleset = json.loads((ROOT / "rulesets/main.json").read_text())
+    ruleset = json.loads((ROOT / "settings/ruleset-main.json").read_text())
     (checks,) = [r for r in ruleset["rules"] if r["type"] == "required_status_checks"]
     required = {c["context"] for c in checks["parameters"]["required_status_checks"]}
     workflows = ROOT / "template/core/.github/workflows"
@@ -300,3 +300,25 @@ def test_every_gate_is_the_same_gate():
     first = gates[0][1]
     for path, body in gates:
         assert body == first, path
+
+
+def test_settings_allow_squash_merges_only():
+    repository = json.loads((ROOT / "settings/repository.json").read_text())
+    assert repository["allow_squash_merge"] is True
+    assert repository["allow_merge_commit"] is False
+    assert repository["allow_rebase_merge"] is False
+    assert repository["squash_merge_commit_title"] == "PR_TITLE"
+
+
+def test_settings_let_release_please_open_its_pr():
+    workflow = json.loads((ROOT / "settings/actions-workflow.json").read_text())
+    assert workflow == {
+        "default_workflow_permissions": "read",
+        "can_approve_pull_request_reviews": True,
+    }
+
+
+def test_configure_sends_every_settings_file():
+    script = (ROOT / "scripts/configure.sh").read_text()
+    for path in (ROOT / "settings").glob("*.json"):
+        assert f"$settings/{path.name}" in script, path.name

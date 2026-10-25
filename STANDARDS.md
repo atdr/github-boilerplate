@@ -195,7 +195,13 @@ repository variable, because a job-level `if:` can read `vars` but not
 
 ## Repository settings
 
-Applied by `scripts/configure.sh`.
+Tracked as data in `settings/` and applied by `scripts/configure.sh`;
+`configure.sh <repo> <overlay> --diff` reports where a repo has drifted from
+them.
+
+Actions may create PRs because release-please opens its release PR with
+`GITHUB_TOKEN`. New repos default this off, and release-please then fails after
+pushing its branch.
 
 | Setting                             | Value                      |
 | ----------------------------------- | -------------------------- |
@@ -210,10 +216,10 @@ Applied by `scripts/configure.sh`.
 | CodeQL default setup                | On (public repos)          |
 | Ruleset `main`                      | See below (public repos)   |
 
-The ruleset (`rulesets/main.json`) blocks deletion and force pushes, requires
-linear history, a PR with resolved conversations and squash merge, and the
-gates, up to date with `main`. No bypass actors, so it binds admins too. Zero
-required approvals: these are solo repos.
+The ruleset (`settings/ruleset-main.json`) blocks deletion and force pushes,
+requires linear history, a PR with resolved conversations and squash merge, and
+the gates, up to date with `main`. No bypass actors, so it binds admins too.
+Zero required approvals: these are solo repos.
 
 **Private repos on GitHub Free** get no rulesets, branch protection, secret
 scanning or private vulnerability reporting. `configure.sh` skips them rather
