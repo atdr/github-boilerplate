@@ -65,12 +65,18 @@ JSON
 	run gh api -X PATCH "repos/$repo/code-scanning/default-setup" --silent \
 		-f state=configured
 
-	# Every repo requires the core gates; a language overlay adds its ci gate.
-	ruleset=$(jq -c --arg overlay "$overlay" '
-		if $overlay == "node" or $overlay == "python" then
+	# Every repo requires the core gates. A repo with a ci.yml (the language
+	# overlays, and this boilerplate itself) also requires its ci gate.
+	has_ci=false
+	if gh api "repos/$repo/contents/.github/workflows/ci.yml" --silent 2>/dev/null; then
+		has_ci=true
+	fi
+	ruleset=$(jq -c --argjson has_ci "$has_ci" '
+		if $has_ci then
 			(.rules[] | select(.type == "required_status_checks")
 				.parameters.required_status_checks) += [{"context": "ci gate", "integration_id": 15368}]
 		else . end' "$here/rulesets/main.json")
+	echo "requires: pull-request gate, checks gate$([ "$has_ci" = false ] || echo ', ci gate')"
 	existing=$(gh api "repos/$repo/rulesets" --jq '.[] | select(.name == "main") | .id')
 	if [ -n "$existing" ]; then
 		run gh api -X PUT "repos/$repo/rulesets/$existing" --silent --input - <<<"$ruleset"
