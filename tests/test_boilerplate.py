@@ -340,3 +340,12 @@ def test_badges_are_flat_square_shields(readme):
         assert "style=flat-square" in image, image
         if "/actions/workflow/status/" in image:
             assert "branch=main" in image, image
+
+
+def test_first_release_is_pre_1_0():
+    # With no earlier tag, release-please ignores the manifest's 0.0.0 and
+    # cuts its default initial version, 1.0.0, unless told otherwise.
+    config = json.loads((ROOT / "release-please-config.json").read_text())
+    package = config["packages"]["."]
+    assert package["initial-version"] == "0.1.0"
+    assert package["bump-minor-pre-major"] is True
