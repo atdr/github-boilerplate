@@ -41,19 +41,39 @@ drift() {
 
 # A repo running release-please lets Actions open PRs, because release-please
 # opens its release PR with GITHUB_TOKEN; every other repo keeps it off.
+#
+# Any doubt aborts rather than guessing: a wrong `false` here would make
+# --apply switch the permission off in a repo whose releases need it.
 uses_release_please=false
-# A repo with no workflows folder answers 404, and gh prints that error body
-# to stdout, so its output only counts when the call succeeded.
-workflows=$(gh api "repos/$repo/contents/.github/workflows" --jq '.[].path' 2>/dev/null) || workflows=
+workflow_settings=$(mktemp)
+api_error=$(mktemp)
+trap 'rm -f "$workflow_settings" "$api_error"' EXIT
+# Only a 404 means the repo has no workflows folder. gh prints that error body
+# to stdout, so the output only counts when the call succeeded.
+if ! workflows=$(gh api "repos/$repo/contents/.github/workflows" --jq '.[].path' 2>"$api_error"); then
+	if grep 'HTTP 404' "$api_error" >/dev/null; then
+		workflows=
+	else
+		echo "could not list $repo's workflows:" >&2
+		cat "$api_error" >&2
+		exit 1
+	fi
+fi
 for path in $workflows; do
-	if gh api "repos/$repo/contents/$path" --jq .content | base64 --decode |
-		grep -q 'googleapis/release-please-action'; then
+	if ! content=$(gh api "repos/$repo/contents/$path" --jq .content); then
+		echo "could not read $path in $repo" >&2
+		exit 1
+	fi
+	# Decoded whole and matched with case, not piped into grep -q: under
+	# pipefail an early grep exit can SIGPIPE the decoder and read as no match.
+	decoded=$(printf '%s' "$content" | base64 --decode)
+	case "$decoded" in
+	*googleapis/release-please-action*)
 		uses_release_please=true
 		break
-	fi
+		;;
+	esac
 done
-workflow_settings=$(mktemp)
-trap 'rm -f "$workflow_settings"' EXIT
 if [ "$uses_release_please" = true ]; then
 	jq -s '.[0] * .[1]' "$settings/actions-workflow.json" \
 		"$settings/actions-workflow-release-please.json" >"$workflow_settings"
