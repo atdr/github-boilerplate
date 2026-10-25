@@ -49,6 +49,9 @@ jobs:
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
+      # A job-level block sets every unlisted scope to none, and checkout
+      # needs this one in a private repo.
+      contents: read
       # No API token: PyPI trusts this workflow (owner/repo/environment) to
       # mint its own short-lived credential via OIDC.
       id-token: write

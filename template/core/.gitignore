@@ -1,0 +1,12 @@
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Claude Code
+.claude/settings.local.json
+
+# Editors / OS
+.DS_Store
+.idea/
