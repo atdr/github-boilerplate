@@ -1,0 +1,43 @@
+# Reusable: lints and format checks every Markdown file in the caller.
+#
+# Two tools, because neither does the other's job: markdownlint has no rule
+# that pads a table cell, and mdformat has no opinion on headings or lists.
+# Settings for both live in the caller's .markdownlint-cli2.yaml and
+# .mdformat.toml.
+name: markdown
+
+on:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  markdown:
+    name: lint
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      # A JavaScript action, so it runs on the runner's own Node: nothing is
+      # fetched from a registry, and Dependabot keeps the pin current.
+      - uses: DavidAnson/markdownlint-cli2-action@v24
+      # The mdformat pins live in this repository, where Dependabot bumps them,
+      # so they are fetched at the commit the caller pinned.
+      - name: Fetch the pinned mdformat requirements
+        env:
+          # job.workflow_sha is this workflow's own commit (the one the caller's
+          # @ref resolved to), not the caller's.
+          REF: ${{ job.workflow_sha }}
+        run: |
+          curl --fail --silent --show-error --retry 3 \
+            -o "$RUNNER_TEMP/requirements-markdown.txt" \
+            "https://raw.githubusercontent.com/atdr/github-boilerplate/$REF/scripts/requirements-markdown.txt"
+      # 3.13 because .mdformat.toml sets `exclude`, which errors below it.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - run: pip install -r "$RUNNER_TEMP/requirements-markdown.txt"
+      - run: mdformat --check .
