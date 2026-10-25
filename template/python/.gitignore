@@ -1,0 +1,29 @@
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Coverage (`pytest --cov` writes the data file and coverage.xml)
+.coverage
+coverage.xml
+htmlcov/
+
+# Claude Code
+.claude/settings.local.json
+
+# Editors / OS
+.DS_Store
+.idea/

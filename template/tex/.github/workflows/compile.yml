@@ -1,0 +1,55 @@
+name: compile
+
+# Push only, every branch: a PR branch's push already builds it, and a
+# pull_request trigger as well would build each commit twice.
+on:
+  push:
+  workflow_dispatch:
+    inputs:
+      texlive_version:
+        description: >-
+          TeX Live version (e.g. 2017) for this run only, overriding
+          texlive_version below; such a run never commits the package list
+        required: false
+      update_packages:
+        description: >-
+          Update package list (regenerate texlive-packages.txt using a full
+          TeX Live install)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Queued, never cancelled: a run on main publishes the PDF as a release, and a
+# run regenerating the package list commits to the branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+# Compiles the document and publishes the PDF as a release tagged
+# build-<short SHA>; see https://github.com/atdr/latex-build
+jobs:
+  build:
+    uses: atdr/latex-build/.github/workflows/build.yml@v1
+    # Needed to commit the package list, and to create tags and releases
+    permissions:
+      contents: write
+    with:
+      # Root .tex file to compile (Overleaf projects often use another name)
+      root_file: main.tex
+      # latexmk engine flag: -pdf (pdfLaTeX, Overleaf's default), -xelatex or
+      # -lualatex
+      engine: -xelatex
+      # TeX Live release year (e.g. "2017"), or latest
+      texlive_version: latest
+      texlive_version_override: ${{ inputs.texlive_version }}
+      update_packages: ${{ inputs.update_packages || false }}
+      # Report chktex findings and LaTeX log warnings as annotations
+      lint: true
+      annotate_warnings: true
+      # Check formatting with tex-fmt in a separate job, which fails without
+      # holding back the PDF; keep the version equal to the hook's rev in
+      # .pre-commit-config.yaml
+      format_check: true
+      tex_fmt_version: "0.5.7"

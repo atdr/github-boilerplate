@@ -1,0 +1,27 @@
+# `pre-commit install` installs both hook types, because of the line below.
+default_install_hook_types: [pre-commit, commit-msg]
+
+repos:
+  # Keep rev equal to tex_fmt_version in .github/workflows/compile.yml.
+  - repo: https://github.com/WGUNDERWOOD/tex-fmt
+    rev: v0.5.7
+    hooks:
+      - id: tex-fmt
+  - repo: https://github.com/DavidAnson/markdownlint-cli2
+    rev: v0.24.0
+    hooks:
+      - id: markdownlint-cli2
+  - repo: https://github.com/hukkin/mdformat
+    rev: 1.0.0
+    hooks:
+      - id: mdformat
+        additional_dependencies:
+          - mdformat-gfm==1.0.0
+          - mdformat-frontmatter==2.1.2
+  # The local half of conventional.yml's commit check. The type list must
+  # match conventional.yml; the conventions check enforces that.
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.4.0
+    hooks:
+      - id: conventional-pre-commit
+        args: [--strict, feat, fix, perf, refactor, test, docs, chore, ci]
