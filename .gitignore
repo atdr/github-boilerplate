@@ -1,0 +1,17 @@
+# Secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Python (the convention checker and its tests)
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Editors / OS
+.DS_Store
+.vscode/
+.idea/
