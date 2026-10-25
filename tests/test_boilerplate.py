@@ -8,6 +8,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -214,3 +215,83 @@ def test_language_overlays_have_the_ci_gate_configure_requires(overlay):
 
 def test_template_claude_md_is_a_symlink():
     assert os.readlink(ROOT / "template/core/CLAUDE.md") == "AGENTS.md"
+
+
+def test_apply_pins_and_strips_markers_after_a_release(tmp_path):
+    # After the first release, release-please has rewritten the template pins
+    # from v0.0.0 to the released version. apply.sh must still strip the marker.
+    copy = tmp_path / "boilerplate"
+    shutil.copytree(ROOT, copy, symlinks=True, ignore=shutil.ignore_patterns(".git"))
+    (copy / ".release-please-manifest.json").write_text('{".": "0.3.1"}\n')
+    for path in (copy / "template").rglob("*.yml"):
+        path.write_text(path.read_text().replace("@v0.0.0 #", "@v0.3.1 #"))
+    target = tmp_path / "repo"
+    target.mkdir()
+    subprocess.run(
+        [str(copy / "scripts" / "apply.sh"), "node", str(target)],
+        check=True,
+        capture_output=True,
+    )
+    ci = (target / ".github/workflows/ci.yml").read_text()
+    assert "node-ci.yml@v0.3.1\n" in ci
+    assert "x-release-please-version" not in ci
+
+
+def test_apply_ignores_a_non_github_remote(tmp_path):
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    subprocess.run(
+        ["git", "-C", str(tmp_path), "remote", "add", "origin", "https://gitlab.com/me/proj.git"],
+        check=True,
+    )
+    apply("core", tmp_path)
+    assert "/atdr/" + tmp_path.name + "/" in (tmp_path / "SECURITY.md").read_text()
+
+
+@pytest.mark.parametrize("overlay", ["core", "tex"])
+def test_readme_has_no_ci_badges_without_a_ci_workflow(overlay, tmp_path):
+    readme = (apply(overlay, tmp_path) / "README.md").read_text()
+    assert "[![CI]" not in readme and "[![Coverage]" not in readme
+
+
+@pytest.mark.parametrize("overlay", OVERLAYS)
+def test_every_overlay_ignores_secrets(overlay, tmp_path):
+    ignored = (apply(overlay, tmp_path) / ".gitignore").read_text().splitlines()
+    assert {".env", ".env.*", "*.pem", "*.key"} <= set(ignored)
+
+
+def test_catches_a_cancelling_job_on_main(repo):
+    def cancel(w):
+        w["jobs"]["gate"]["concurrency"] = {"group": "x", "cancel-in-progress": True}
+
+    edit_yaml(repo / ".github/workflows/ci.yml", cancel)
+    assert "concurrency" in rules(repo)
+
+
+def test_dependabot_covers_every_template_workflow_directory():
+    config = yaml.safe_load((ROOT / ".github/dependabot.yml").read_text())
+    (actions,) = [u for u in config["updates"] if u["package-ecosystem"] == "github-actions"]
+    expected = {"/"} | {
+        "/" + str(p.relative_to(ROOT)) for p in (ROOT / "template").glob("*/.github/workflows")
+    }
+    assert set(actions["directories"]) == expected
+
+
+def all_workflows():
+    return sorted(
+        [*(ROOT / ".github/workflows").glob("*.yml"), *(ROOT / "template").glob("*/.github/workflows/*.yml")]
+    )
+
+
+def test_every_gate_is_the_same_gate():
+    # The gate is copied into each caller rather than shared, because a
+    # required check is named by its own job. This keeps the copies identical.
+    gates = []
+    for path in all_workflows():
+        for job in yaml.safe_load(path.read_text())["jobs"].values():
+            if str(job.get("name", "")).endswith(" gate"):
+                body = {k: v for k, v in job.items() if k not in ("name", "needs")}
+                gates.append((path.relative_to(ROOT), body))
+    assert len(gates) > 1
+    first = gates[0][1]
+    for path, body in gates:
+        assert body == first, path
