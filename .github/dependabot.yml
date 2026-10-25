@@ -1,9 +1,16 @@
 version: 2
 updates:
-  # The actions in the reusable workflows run in every caller, so a bump here
-  # changes what they run and must cut a release: `fix`, not `ci`.
+  # The actions in the reusable workflows and the template's workflows run in
+  # every caller, so a bump here changes what they run and must cut a release:
+  # `fix`, not `ci`. The template's workflow directories are listed one by one
+  # because `/` covers .github/workflows only; tests/ fails if one is missing.
   - package-ecosystem: github-actions
-    directory: /
+    directories:
+      - /
+      - /template/core/.github/workflows
+      - /template/node/.github/workflows
+      - /template/python/.github/workflows
+      - /template/tex/.github/workflows
     schedule:
       interval: weekly
     commit-message:
