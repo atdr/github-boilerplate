@@ -8,10 +8,22 @@
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": false,
       "extra-files": [
-        "template/core/.github/workflows/checks.yml",
-        "template/core/.github/workflows/pull-request.yml",
-        "template/node/.github/workflows/ci.yml",
-        "template/python/.github/workflows/ci.yml"
+        {
+          "type": "generic",
+          "path": "template/core/.github/workflows/checks.yml"
+        },
+        {
+          "type": "generic",
+          "path": "template/core/.github/workflows/pull-request.yml"
+        },
+        {
+          "type": "generic",
+          "path": "template/node/.github/workflows/ci.yml"
+        },
+        {
+          "type": "generic",
+          "path": "template/python/.github/workflows/ci.yml"
+        }
       ]
     }
   }

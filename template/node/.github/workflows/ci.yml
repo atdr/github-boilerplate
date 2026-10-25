@@ -28,7 +28,9 @@ jobs:
   # every time a line enters or leaves LTS.
   gate:
     name: ci gate
-    if: always()
+    # Not always(): a run superseded by a newer one is cancelled, and its gate
+    # would report a failure on the same commit the newer run is checking.
+    if: ${{ !cancelled() }}
     needs: [node]
     timeout-minutes: 5
     runs-on: ubuntu-latest

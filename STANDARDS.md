@@ -92,6 +92,10 @@ Each caller workflow ends in one gate job (`ci gate`, `checks gate`,
 `pull-request gate`) that `needs:` every other job and fails if any failed or
 was cancelled. Branch protection requires the gates and nothing else.
 
+A gate runs `if: ${{ !cancelled() }}`, not `always()`. A run superseded by a
+newer one is cancelled, and with `always()` its gate would still report a
+failure on the same commit the newer run is checking.
+
 **Why:** the Node matrix follows LTS, so its job names change when a line enters
 or leaves LTS. Requiring those names would break the ruleset each time, and
 requiring jobs inside another repository's reusable workflow ties the ruleset to
@@ -195,7 +199,14 @@ repository variable, because a job-level `if:` can read `vars` but not
 
 ## Repository settings
 
-Applied by `scripts/configure.sh`.
+Tracked as data in `settings/` and applied by `scripts/configure.sh`;
+`configure.sh <repo> <overlay> --diff` reports where a repo has drifted from
+them.
+
+Actions may create PRs only in a repo that runs release-please, which opens its
+release PR with `GITHUB_TOKEN`. New repos default this off, and release-please
+then fails after pushing its branch. Everywhere else it stays off, so no
+workflow can open or approve a PR it was not built to.
 
 | Setting                             | Value                      |
 | ----------------------------------- | -------------------------- |
@@ -203,16 +214,17 @@ Applied by `scripts/configure.sh`.
 | Squash commit title / message       | PR title / commit messages |
 | Delete branch on merge              | On                         |
 | Default workflow token              | Read                       |
+| Actions may create PRs              | Only with release-please   |
 | Dependabot alerts, security updates | On                         |
 | Secret scanning, push protection    | On (public repos)          |
 | Private vulnerability reporting     | On (public repos)          |
 | CodeQL default setup                | On (public repos)          |
 | Ruleset `main`                      | See below (public repos)   |
 
-The ruleset (`rulesets/main.json`) blocks deletion and force pushes, requires
-linear history, a PR with resolved conversations and squash merge, and the
-gates, up to date with `main`. No bypass actors, so it binds admins too. Zero
-required approvals: these are solo repos.
+The ruleset (`settings/ruleset-main.json`) blocks deletion and force pushes,
+requires linear history, a PR with resolved conversations and squash merge, and
+the gates, up to date with `main`. No bypass actors, so it binds admins too.
+Zero required approvals: these are solo repos.
 
 **Private repos on GitHub Free** get no rulesets, branch protection, secret
 scanning or private vulnerability reporting. `configure.sh` skips them rather
@@ -229,8 +241,10 @@ than failing.
 - **`.github/pull_request_template.md`**: What changed, Why, Checks, Test plan.
 - **Issue forms** in YAML, with blank issues off.
 - **`FUNDING.yml`**.
-- **README** badges in this order: package, last commit, CI, coverage. Then
-  install, quick start, configuration, development, contributing, license.
+- **README** badges in this order: package, last commit, CI, coverage. All from
+  shields.io with `style=flat-square`, lowercase labels except `CI`, and the CI
+  badge on `branch=main` so a failing PR does not turn it red. Then install,
+  quick start, configuration, development, contributing, license.
 
 ## Markdown
 

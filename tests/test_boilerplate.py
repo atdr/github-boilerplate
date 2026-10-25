@@ -180,7 +180,12 @@ def test_conventional_types_match_the_checker():
 
 def test_every_template_pin_is_rewritten_on_release():
     config = json.loads((ROOT / "release-please-config.json").read_text())
-    extra_files = set(config["packages"]["."]["extra-files"])
+    entries = config["packages"]["."]["extra-files"]
+    # A bare path to a .yml file gets release-please's YAML updater, which
+    # looks for a `version` key and ignores the x-release-please-version
+    # markers. Only the generic updater reads them.
+    assert all(isinstance(e, dict) and e.get("type") == "generic" for e in entries)
+    extra_files = {e["path"] for e in entries}
     pinned = set()
     for path in (ROOT / "template").rglob("*.yml"):
         for line in path.read_text().splitlines():
@@ -200,7 +205,7 @@ def gate_names(path: Path) -> set[str]:
 
 
 def test_ruleset_requires_exactly_the_core_gates():
-    ruleset = json.loads((ROOT / "rulesets/main.json").read_text())
+    ruleset = json.loads((ROOT / "settings/ruleset-main.json").read_text())
     (checks,) = [r for r in ruleset["rules"] if r["type"] == "required_status_checks"]
     required = {c["context"] for c in checks["parameters"]["required_status_checks"]}
     workflows = ROOT / "template/core/.github/workflows"
@@ -293,5 +298,45 @@ def test_every_gate_is_the_same_gate():
                 gates.append((path.relative_to(ROOT), body))
     assert len(gates) > 1
     first = gates[0][1]
+    assert first["if"] == "${{ !cancelled() }}"
     for path, body in gates:
         assert body == first, path
+
+
+def test_settings_allow_squash_merges_only():
+    repository = json.loads((ROOT / "settings/repository.json").read_text())
+    assert repository["allow_squash_merge"] is True
+    assert repository["allow_merge_commit"] is False
+    assert repository["allow_rebase_merge"] is False
+    assert repository["squash_merge_commit_title"] == "PR_TITLE"
+
+
+def test_only_release_please_repos_let_actions_open_prs():
+    base = json.loads((ROOT / "settings/actions-workflow.json").read_text())
+    assert base == {
+        "default_workflow_permissions": "read",
+        "can_approve_pull_request_reviews": False,
+    }
+    extra = json.loads((ROOT / "settings/actions-workflow-release-please.json").read_text())
+    assert extra == {"can_approve_pull_request_reviews": True}
+
+
+def test_configure_sends_every_settings_file():
+    script = (ROOT / "scripts/configure.sh").read_text()
+    for path in (ROOT / "settings").glob("*.json"):
+        assert f"$settings/{path.name}" in script, path.name
+
+
+BADGE = re.compile(r"^\[!\[[^\]]+\]\((?P<image>[^)]+)\)\]\([^)]+\)$")
+
+
+@pytest.mark.parametrize("readme", ["README.md", "template/core/README.md"])
+def test_badges_are_flat_square_shields(readme):
+    badges = [m for line in (ROOT / readme).read_text().splitlines() if (m := BADGE.match(line))]
+    assert badges
+    for badge in badges:
+        image = badge["image"]
+        assert image.startswith("https://img.shields.io/"), image
+        assert "style=flat-square" in image, image
+        if "/actions/workflow/status/" in image:
+            assert "branch=main" in image, image

@@ -33,8 +33,10 @@ scripts/configure.sh <owner/repo> <node|python|tex|core> [--apply]   # dry run b
 - `scripts/check-conventions.py` enforces the checkable rules in `STANDARDS.md`.
   `conventions.yml` fetches it from this repo at the caller's pinned commit
   (`job.workflow_sha`) rather than copying it into each repo.
-- `rulesets/main.json` is the branch ruleset; `configure.sh` adds `ci gate` when
-  the repo has a `ci.yml`.
+- `settings/` holds the repository settings as data: merge types and the Actions
+  token (`repository.json`, `actions-workflow.json`), security features, and the
+  branch ruleset. `configure.sh` sends them, adding `ci gate` to the ruleset
+  when the repo has a `ci.yml`; `--diff` reports drift from them.
 
 ## Conventions
 
