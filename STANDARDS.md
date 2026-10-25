@@ -115,6 +115,12 @@ merging, confirm each gate reported.
 - **Versions:** Node follows every line currently in LTS, read from the Node
   release schedule at run time. Python takes an explicit list matching
   `requires-python`.
+- **Lockfiles:** an application, which runs its own code (a scheduled scrape, a
+  deploy), pins its dependencies with a lockfile, so a new upstream release only
+  reaches it through a tested Dependabot PR and a release. A library does not:
+  its users resolve their own versions. In Python, a `uv.lock` makes `python-ci`
+  install with `uv sync --locked`, and Dependabot then uses the `uv` ecosystem
+  [dependabot-uv].
 - **Coverage reports, it does not gate** [codecov]. A separate job re-runs the
   suite under coverage on one version. The coverage run itself must pass; the
   Codecov upload is `continue-on-error`, and both statuses in `codecov.yml` are

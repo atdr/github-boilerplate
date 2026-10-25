@@ -4,6 +4,10 @@
 # What pytest measures under coverage lives in pyproject.toml
 # ([tool.coverage.run]), not on the command line here, so a developer running
 # `pytest --cov` locally measures what CI measures.
+#
+# A repo with a uv.lock is installed from it (`uv sync --locked`) and its tools
+# run through `uv run --locked`, so CI tests exactly the versions the lock pins
+# and fails if the lock is stale. Without one, `install` runs with pip.
 name: python-ci
 
 on:
@@ -18,7 +22,9 @@ on:
         type: string
         default: "3.13"
       install:
-        description: Command that installs the package and its dev tools
+        description: >-
+          Command that installs the package and its dev tools with pip. Ignored
+          when the repo has a uv.lock, which is installed with uv instead.
         type: string
         default: pip install -e ".[dev]"
       coverage:
@@ -44,9 +50,29 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ inputs.python-version }}
-      - run: ${{ inputs.install }}
-      - run: ruff check .
-      - run: ruff format --check .
+      - name: Use uv if the repo has a lockfile
+        id: tool
+        run: |
+          if [ -f uv.lock ]; then
+            echo "uv=true" >> "$GITHUB_OUTPUT"
+            echo "RUN=uv run --locked" >> "$GITHUB_ENV"
+          fi
+      - if: steps.tool.outputs.uv == 'true'
+        uses: astral-sh/setup-uv@v10.3.2
+        with:
+          python-version: ${{ inputs.python-version }}
+      - name: Install
+        env:
+          INSTALL: ${{ inputs.install }}
+          UV: ${{ steps.tool.outputs.uv }}
+        run: |
+          if [ "$UV" = true ]; then
+            uv sync --locked
+          else
+            eval "$INSTALL"
+          fi
+      - run: $RUN ruff check .
+      - run: $RUN ruff format --check .
 
   test:
     # Interpolated, not a fixed string: a matrix job with a static name produces
@@ -65,8 +91,28 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
-      - run: ${{ inputs.install }}
-      - run: pytest -q
+      - name: Use uv if the repo has a lockfile
+        id: tool
+        run: |
+          if [ -f uv.lock ]; then
+            echo "uv=true" >> "$GITHUB_OUTPUT"
+            echo "RUN=uv run --locked" >> "$GITHUB_ENV"
+          fi
+      - if: steps.tool.outputs.uv == 'true'
+        uses: astral-sh/setup-uv@v10.3.2
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install
+        env:
+          INSTALL: ${{ inputs.install }}
+          UV: ${{ steps.tool.outputs.uv }}
+        run: |
+          if [ "$UV" = true ]; then
+            uv sync --locked
+          else
+            eval "$INSTALL"
+          fi
+      - run: $RUN pytest -q
 
   # Reporting, not a gate: the matrix above is what proves the suite passes.
   # One interpreter, because coverage of the same code on several says the same
@@ -83,8 +129,28 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ inputs.python-version }}
-      - run: ${{ inputs.install }}
-      - run: pytest -q --cov --cov-report=xml
+      - name: Use uv if the repo has a lockfile
+        id: tool
+        run: |
+          if [ -f uv.lock ]; then
+            echo "uv=true" >> "$GITHUB_OUTPUT"
+            echo "RUN=uv run --locked" >> "$GITHUB_ENV"
+          fi
+      - if: steps.tool.outputs.uv == 'true'
+        uses: astral-sh/setup-uv@v10.3.2
+        with:
+          python-version: ${{ inputs.python-version }}
+      - name: Install
+        env:
+          INSTALL: ${{ inputs.install }}
+          UV: ${{ steps.tool.outputs.uv }}
+        run: |
+          if [ "$UV" = true ]; then
+            uv sync --locked
+          else
+            eval "$INSTALL"
+          fi
+      - run: $RUN pytest -q --cov --cov-report=xml
       # Advisory only: a Codecov outage or a token missing from a fork says
       # nothing about the change under review. The coverage run above stays
       # blocking.

@@ -147,6 +147,16 @@ def check_dependabot(root: Path, f: Findings) -> None:
             "version on their own",
         )
 
+    # A uv project's dependencies live in uv.lock, which only the uv ecosystem
+    # updates; pip would leave the lock, and so CI and the release, unchanged.
+    if (root / "uv.lock").is_file() and "uv" not in ecosystems:
+        f.add(
+            path,
+            "dependabot-uv",
+            "this repo has a uv.lock, so use package-ecosystem: uv; pip does "
+            "not update the lock",
+        )
+
     for update in updates:
         ecosystem = update.get("package-ecosystem")
         message = update.get("commit-message") or {}
