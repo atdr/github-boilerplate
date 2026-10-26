@@ -35,8 +35,8 @@ Then apply the repository settings. It prints what it would change until you
 pass `--apply`:
 
 ```bash
-scripts/configure.sh atdr/my-package node
-scripts/configure.sh atdr/my-package node --apply
+scripts/configure.sh atdr/my-package
+scripts/configure.sh atdr/my-package --apply
 ```
 
 Or call a reusable workflow directly:

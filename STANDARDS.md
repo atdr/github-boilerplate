@@ -211,8 +211,7 @@ repository variable, because a job-level `if:` can read `vars` but not
 ## Repository settings
 
 Tracked as data in `settings/` and applied by `scripts/configure.sh`;
-`configure.sh <repo> <overlay> --diff` reports where a repo has drifted from
-them.
+`configure.sh <repo> --diff` reports where a repo has drifted from them.
 
 Actions may create PRs only in a repo that runs release-please, which opens its
 release PR with `GITHUB_TOKEN`. New repos default this off, and release-please

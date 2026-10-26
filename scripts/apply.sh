@@ -120,4 +120,4 @@ python | tex)
 	;;
 esac
 echo "  fill in the README and AGENTS.md skeletons"
-echo "  scripts/configure.sh $owner/$repo $overlay   (repo settings, ruleset, environments)"
+echo "  scripts/configure.sh $owner/$repo   (repo settings, ruleset, environments)"
