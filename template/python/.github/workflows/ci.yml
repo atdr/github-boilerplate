@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   python:
-    uses: atdr/github-boilerplate/.github/workflows/python-ci.yml@v0.2.0 # x-release-please-version
+    uses: atdr/github-boilerplate/.github/workflows/python-ci.yml@v0.2.1 # x-release-please-version
     with:
       # Every version requires-python in pyproject.toml admits.
       python-versions: '["3.11", "3.12", "3.13", "3.14"]'

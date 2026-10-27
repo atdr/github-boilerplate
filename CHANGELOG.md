@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.1](https://github.com/atdr/github-boilerplate/compare/v0.2.0...v0.2.1) (2026-10-27)
+
+
+### Bug Fixes
+
+* **scripts:** create only the environments a repo's workflows name ([#9](https://github.com/atdr/github-boilerplate/issues/9)) ([52056cb](https://github.com/atdr/github-boilerplate/commit/52056cbb7a86a1aa72e5a6daae5a50952312eb47))
+* **settings:** stop requiring PRs to be up to date with main ([#12](https://github.com/atdr/github-boilerplate/issues/12)) ([1427053](https://github.com/atdr/github-boilerplate/commit/14270535485cfce8e79b7aaf37369cc36694ee51))
+
 ## [0.2.0](https://github.com/atdr/github-boilerplate/compare/v0.1.0...v0.2.0) (2026-10-25)
 
 
