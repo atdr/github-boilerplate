@@ -233,8 +233,14 @@ workflow can open or approve a PR it was not built to.
 
 The ruleset (`settings/ruleset-main.json`) blocks deletion and force pushes,
 requires linear history, a PR with resolved conversations and squash merge, and
-the gates, up to date with `main`. No bypass actors, so it binds admins too.
-Zero required approvals: these are solo repos.
+the gates. No bypass actors, so it binds admins too. Zero required approvals:
+these are solo repos.
+
+The gates need not have run against the latest `main`. Requiring that makes
+every open PR, release-please's included, merge `main` in and rerun CI each time
+another PR lands, and in a solo repo two PRs rarely collide in a way the gates
+would catch. CI on `main` after the merge still does. "Update branch" stays
+available for when it is wanted.
 
 **Private repos on GitHub Free** get no rulesets, branch protection, secret
 scanning or private vulnerability reporting. `configure.sh` skips them rather
