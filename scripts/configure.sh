@@ -178,13 +178,19 @@ main
 	fi
 }
 
-# The environment a workflow job names, as `environment: <name>` (the
-# template's form). Matched on the whole word, so npm-release never matches
-# npm-prerelease.
+# Every environment the workflows' jobs name, in any form a job can declare it
+# (see the awk program). Matched as whole lines below, so npm-release never
+# matches npm-prerelease.
+environments=$(printf '%s\n' "${all_workflows:-}" | awk -f "$here/scripts/workflow-environments.awk")
 names_environment() {
-	printf '%s\n' "${all_workflows:-}" |
-		sed -E 's/#.*//' |
-		awk -v want="$1" '$1 == "environment:" && $2 == want { found = 1 } END { exit !found }'
+	case "
+$environments
+" in
+	*"
+$1
+"*) return 0 ;;
+	esac
+	return 1
 }
 
 if names_environment npm-release; then
