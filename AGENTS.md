@@ -18,7 +18,7 @@ shellcheck scripts/*.sh && shellcheck --shell=sh template/node/.husky/*
 npx markdownlint-cli2 && mdformat --check .
 
 scripts/apply.sh <node|python|tex|core> <target-dir> [--force]
-scripts/configure.sh <owner/repo> <node|python|tex|core> [--apply]   # dry run by default
+scripts/configure.sh <owner/repo> [--apply|--diff]   # dry run by default
 ```
 
 ## Architecture

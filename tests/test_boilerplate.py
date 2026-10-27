@@ -348,6 +348,56 @@ def test_configure_sends_every_settings_file():
         assert f"$settings/{path.name}" in script, path.name
 
 
+def environments(workflow: str) -> list[str]:
+    result = subprocess.run(
+        ["awk", "-f", str(ROOT / "scripts/workflow-environments.awk")],
+        input=workflow,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    return result.stdout.splitlines()
+
+
+@pytest.mark.parametrize(
+    "declaration",
+    [
+        "environment: pypi",
+        "environment: 'pypi'",
+        'environment: "pypi"',
+        "environment: pypi  # trusted publisher",
+        "environment: { name: pypi, url: https://pypi.org }",
+        "environment: {name: 'pypi'}",
+        "environment:\n      name: pypi\n      url: https://pypi.org",
+        "environment:\n      url: https://pypi.org\n      name: \"pypi\"",
+    ],
+)
+def test_configure_reads_each_environment_form(declaration):
+    workflow = f"jobs:\n  publish:\n    {declaration}\n    runs-on: ubuntu-latest\n"
+    assert environments(workflow) == ["pypi"]
+
+
+def test_configure_ignores_commented_and_unrelated_names():
+    workflow = (
+        "jobs:\n"
+        "  a:\n"
+        "    # environment: pypi\n"
+        "    environment:\n"
+        "      name: npm-prerelease\n"
+        "    steps:\n"
+        "      - name: Publish\n"
+    )
+    assert environments(workflow) == ["npm-prerelease"]
+
+
+@pytest.mark.parametrize("overlay", ["node", "python"])
+def test_configure_finds_the_template_environments(overlay):
+    workflows = ROOT / f"template/{overlay}/.github/workflows"
+    text = "".join(path.read_text() for path in sorted(workflows.glob("*.yml")))
+    expected = {"node": {"npm-release", "npm-prerelease"}, "python": {"pypi"}}[overlay]
+    assert set(environments(text)) == expected
+
+
 BADGE = re.compile(r"^\[!\[[^\]]+\]\((?P<image>[^)]+)\)\]\([^)]+\)$")
 
 

@@ -1,9 +1,13 @@
 #!/usr/bin/env bash
 # Applies the repository settings in STANDARDS.md to a GitHub repo: merge
 # rules, security features, the default workflow token, the main ruleset, and
-# the deployment environments its overlay publishes from.
+# the deployment environments its workflows publish from.
 #
-# Usage: scripts/configure.sh <owner/repo> <node|python|tex|core> [--apply|--diff]
+# Usage: scripts/configure.sh <owner/repo> [--apply|--diff]
+#
+# What a repo needs is read from its own workflows, not from which overlay it
+# was built from: the ci gate where it has a ci.yml, Actions may open PRs where
+# it runs release-please, and only the publishing environments it names.
 #
 # The settings themselves are data in settings/, and STANDARDS.md says why
 # each has its value. This script only sends them.
@@ -16,15 +20,13 @@
 set -euo pipefail
 
 usage() {
-	echo "usage: $0 <owner/repo> <node|python|tex|core> [--apply|--diff]" >&2
+	echo "usage: $0 <owner/repo> [--apply|--diff]" >&2
 	exit 2
 }
 
-[ $# -ge 2 ] || usage
+[ $# -ge 1 ] || usage
 repo=$1
-overlay=$2
-mode=${3:-}
-case "$overlay" in node | python | tex | core) ;; *) usage ;; esac
+mode=${2:-}
 [ -z "$mode" ] || [ "$mode" = --apply ] || [ "$mode" = --diff ] || usage
 
 here=$(cd "$(dirname "$0")/.." && pwd)
@@ -67,13 +69,12 @@ for path in $workflows; do
 	# Decoded whole and matched with case, not piped into grep -q: under
 	# pipefail an early grep exit can SIGPIPE the decoder and read as no match.
 	decoded=$(printf '%s' "$content" | base64 --decode)
-	case "$decoded" in
-	*googleapis/release-please-action*)
-		uses_release_please=true
-		break
-		;;
-	esac
+	all_workflows="${all_workflows:-}$decoded
+"
 done
+case "${all_workflows:-}" in
+*googleapis/release-please-action*) uses_release_please=true ;;
+esac
 if [ "$uses_release_please" = true ]; then
 	jq -s '.[0] * .[1]' "$settings/actions-workflow.json" \
 		"$settings/actions-workflow-release-please.json" >"$workflow_settings"
@@ -149,37 +150,65 @@ else
 fi
 
 # Publishing environments, limited to main so a workflow on another branch
-# cannot mint the publishing token.
+# cannot mint the publishing token. Only the ones the repo's workflows name:
+# a repo that publishes nowhere gets none.
 environment() {
 	local name=$1 limit=$2
 	if [ "$limit" = main ]; then
 		run gh api -X PUT "repos/$repo/environments/$name" --silent --input - <<'JSON'
 {"deployment_branch_policy": {"protected_branches": false, "custom_branch_policies": true}}
 JSON
-		if ! gh api "repos/$repo/environments/$name/deployment-branch-policies" \
-			--jq '.branch_policies[].name' 2>/dev/null | grep -qx main; then
+		# Captured, then matched: no grep -q at the end of a pipeline, which
+		# under pipefail can read a match as a miss.
+		policies=$(gh api "repos/$repo/environments/$name/deployment-branch-policies" \
+			--jq '.branch_policies[].name' 2>/dev/null) || policies=
+		case "
+$policies
+" in
+		*"
+main
+"*) ;;
+		*)
 			run gh api -X POST "repos/$repo/environments/$name/deployment-branch-policies" \
 				--silent -f name=main -f type=branch
-		fi
+			;;
+		esac
 	else
 		run gh api -X PUT "repos/$repo/environments/$name" --silent
 	fi
 }
 
-case "$overlay" in
-node)
+# Every environment the workflows' jobs name, in any form a job can declare it
+# (see the awk program). Matched as whole lines below, so npm-release never
+# matches npm-prerelease.
+environments=$(printf '%s\n' "${all_workflows:-}" | awk -f "$here/scripts/workflow-environments.awk")
+names_environment() {
+	case "
+$environments
+" in
+	*"
+$1
+"*) return 0 ;;
+	esac
+	return 1
+}
+
+if names_environment npm-release; then
 	environment npm-release main
+	echo "then on npmjs.com: add a trusted publisher for publish-release.yml" \
+		"(environment npm-release)"
+fi
+if names_environment npm-prerelease; then
 	# Dispatched by hand from any branch a beta is built from.
 	environment npm-prerelease any
-	echo "then on npmjs.com: add trusted publishers for publish-release.yml" \
-		"(environment npm-release) and publish-prerelease.yml (npm-prerelease)"
-	;;
-python)
+	echo "then on npmjs.com: add a trusted publisher for publish-prerelease.yml" \
+		"(environment npm-prerelease)"
+fi
+if names_environment pypi; then
 	environment pypi main
 	echo "then on pypi.org: add a trusted publisher for release-please.yml" \
 		"(environment pypi)"
-	;;
-esac
+fi
 
 echo "and add the CODECOV_TOKEN secret if the repo reports coverage"
 [ "$mode" = --apply ] || echo "dry run: nothing changed. Rerun with --apply."
