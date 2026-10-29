@@ -15,6 +15,12 @@ updates:
       interval: weekly
     commit-message:
       prefix: fix(deps)
+    # The same cooldown the template sets: GitHub's default three days, with
+    # atdr's own actions (atdr/latex-build in the TeX template) exempt.
+    cooldown:
+      default-days: 3
+      exclude:
+        - 'atdr/*'
     # Without this, one action bump opens a PR per directory above: five
     # `fix(deps)` changelog lines for one change, each needing a rebase after
     # the last merges. Grouped by dependency name, so each action is still its
