@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.3](https://github.com/atdr/github-boilerplate/compare/v0.2.2...v0.2.3) (2026-10-29)
+
+
+### Bug Fixes
+
+* **template:** give CI runs on main a concurrency group each ([#16](https://github.com/atdr/github-boilerplate/issues/16)) ([92f73f9](https://github.com/atdr/github-boilerplate/commit/92f73f9abc8c32047177467f24add4a1aab8953b))
+* **template:** let atdr's own actions skip Dependabot's cooldown ([#18](https://github.com/atdr/github-boilerplate/issues/18)) ([62abab6](https://github.com/atdr/github-boilerplate/commit/62abab6355daf2394a86face921a04df6c00fa89))
+
 ## [0.2.2](https://github.com/atdr/github-boilerplate/compare/v0.2.1...v0.2.2) (2026-10-29)
 
 

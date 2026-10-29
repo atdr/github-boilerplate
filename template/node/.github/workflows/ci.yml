@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   node:
-    uses: atdr/github-boilerplate/.github/workflows/node-ci.yml@v0.2.2 # x-release-please-version
+    uses: atdr/github-boilerplate/.github/workflows/node-ci.yml@v0.2.3 # x-release-please-version
     with:
       # Each must exist in package.json; a missing one fails the job.
       scripts: lint format:check test
