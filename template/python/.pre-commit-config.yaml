@@ -29,6 +29,7 @@ repos:
           - mdformat-gfm==1.0.0
           - mdformat-frontmatter==2.1.2
           - mdformat-footnote==0.1.3
+          - mdformat-gfm-alerts==2.1.0
   # The local half of conventional.yml's commit check, without Node. The type
   # list must match conventional.yml; the conventions check enforces that.
   - repo: https://github.com/compilerla/conventional-pre-commit
