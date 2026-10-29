@@ -23,7 +23,7 @@ jobs:
           persist-credentials: false
       # A JavaScript action, so it runs on the runner's own Node: nothing is
       # fetched from a registry, and Dependabot keeps the pin current.
-      - uses: DavidAnson/markdownlint-cli2-action@v24
+      - uses: DavidAnson/markdownlint-cli2-action@v25
       # The mdformat pins live in this repository, where Dependabot bumps them,
       # so they are fetched at the commit the caller pinned.
       - name: Fetch the pinned mdformat requirements
