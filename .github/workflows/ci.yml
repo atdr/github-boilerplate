@@ -8,8 +8,10 @@ on:
 permissions:
   contents: read
 
+# A group per run outside pull requests, so no commit on main loses its run;
+# see Concurrency in atdr/github-boilerplate STANDARDS.md.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
