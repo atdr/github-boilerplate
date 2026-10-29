@@ -107,7 +107,10 @@ def check_workflows(root: Path, f: Findings) -> None:
                 for job_id, job in (workflow.get("jobs") or {}).items()
             ]
             for where, concurrency in blocks:
-                if isinstance(concurrency, dict) and concurrency.get("cancel-in-progress") is True:
+                if not isinstance(concurrency, dict):
+                    continue
+                cancel = concurrency.get("cancel-in-progress")
+                if cancel is True:
                     f.add(
                         path,
                         "concurrency",
@@ -115,6 +118,18 @@ def check_workflows(root: Path, f: Findings) -> None:
                         "non-PR triggers; use ${{ github.event_name == "
                         "'pull_request' }} for CI, or false to queue releases "
                         "and deploys",
+                    )
+                # CI that cancels on PRs only must also give every other run
+                # its own group: GitHub keeps one pending run per group, so a
+                # shared group on main drops a commit's run before it starts.
+                elif "pull_request" in str(cancel) and "run_id" not in str(concurrency.get("group", "")):
+                    f.add(
+                        path,
+                        "concurrency",
+                        f"{where}: a group shared outside pull requests drops "
+                        "pending runs on main; key it by github.run_id there, "
+                        "e.g. ${{ github.workflow }}-${{ github.event_name == "
+                        "'pull_request' && github.ref || github.run_id }}",
                     )
 
         # A types override would split the one commit type list in two.

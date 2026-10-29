@@ -120,6 +120,14 @@ def test_catches_cancelling_runs_on_main(repo):
     assert "concurrency" in rules(repo)
 
 
+def test_catches_a_ci_group_shared_on_main(repo):
+    def share(w):
+        w["concurrency"]["group"] = "${{ github.workflow }}-${{ github.ref }}"
+
+    edit_yaml(repo / ".github/workflows/ci.yml", share)
+    assert "concurrency" in rules(repo)
+
+
 def test_allows_cancelling_a_pr_only_workflow(repo):
     text = (repo / ".github/workflows/pull-request.yml").read_text()
     assert "cancel-in-progress: true" in text

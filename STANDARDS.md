@@ -80,7 +80,10 @@ writable `contents` token.
 - **CI:** cancel superseded runs on pull requests only:
   `cancel-in-progress: ${{ github.event_name == 'pull_request' }}`. On `main`
   every commit keeps its own result, so a red run points at the commit that
-  broke it.
+  broke it. That needs a group per run outside pull requests (`github.run_id`),
+  not just `cancel-in-progress: false`: GitHub keeps one pending run per group,
+  so in a shared group a third push drops the second push's run before it
+  starts.
 - **Release, publish, deploy, and scheduled jobs that write:** a fixed group
   with `cancel-in-progress: false`, so runs queue. GitHub keeps only one pending
   run per group and replaces it with a newer one, which is fine when the newer
