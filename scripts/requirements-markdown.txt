@@ -15,3 +15,6 @@ mdformat-frontmatter==2.1.2
 # Footnotes, which GitHub renders. Without this mdformat escapes each
 # definition (`\[^note\]:`), and the reference no longer links to it.
 mdformat-footnote==0.1.3
+# GitHub alerts (`> [!NOTE]`). Without this mdformat joins the marker to the
+# text after it, and GitHub then shows the marker as text, not as an alert.
+mdformat-gfm-alerts==2.1.0
