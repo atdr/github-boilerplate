@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.2](https://github.com/atdr/github-boilerplate/compare/v0.2.1...v0.2.2) (2026-10-29)
+
+
+### Bug Fixes
+
+* **workflows:** keep GitHub alert markers on their own line under mdformat ([#15](https://github.com/atdr/github-boilerplate/issues/15)) ([85a9fbe](https://github.com/atdr/github-boilerplate/commit/85a9fbe8484eb95a2d1fc1da512f00c450554f34))
+* **workflows:** keep Markdown footnotes intact under mdformat ([#13](https://github.com/atdr/github-boilerplate/issues/13)) ([0cbbe49](https://github.com/atdr/github-boilerplate/commit/0cbbe4910c1b1d52a6f2b61a266092cd4ed7efc0))
+
 ## [0.2.1](https://github.com/atdr/github-boilerplate/compare/v0.2.0...v0.2.1) (2026-10-27)
 
 
