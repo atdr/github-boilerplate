@@ -37,6 +37,41 @@ def apply(overlay: str, target: Path) -> Path:
     return target
 
 
+
+def diff(overlay: str, target: Path) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        [str(ROOT / "scripts" / "apply.sh"), overlay, str(target), "--diff"],
+        capture_output=True,
+        text=True,
+    )
+
+
+@pytest.mark.parametrize("overlay", OVERLAYS)
+def test_diff_finds_a_fresh_copy_unchanged(overlay, tmp_path):
+    result = diff(overlay, apply(overlay, tmp_path / "repo"))
+    assert result.returncode == 0, result.stdout
+    assert "every copied file matches" in result.stdout
+
+
+def test_diff_shows_an_edited_copy_and_a_missing_one(tmp_path):
+    repo = apply("node", tmp_path / "repo")
+    ci = repo / ".github/workflows/ci.yml"
+    ci.write_text(ci.read_text().replace("scripts: lint format:check test", "scripts: lint test"))
+    (repo / "SECURITY.md").unlink()
+    result = diff("node", repo)
+    assert result.returncode == 1
+    assert "-      scripts: lint format:check test" in result.stdout
+    assert "+      scripts: lint test" in result.stdout
+    assert "missing from the repo:\n    SECURITY.md" in result.stdout
+
+
+def test_diff_leaves_the_skeletons_alone(tmp_path):
+    repo = apply("core", tmp_path / "repo")
+    (repo / "README.md").write_text("# Something else entirely\n")
+    result = diff("core", repo)
+    assert result.returncode == 0, result.stdout
+    assert "README.md" in result.stdout.splitlines()[-1]
+
 def rules(root: Path) -> set[str]:
     return {rule for _, rule, _ in checker.run(root)}
 

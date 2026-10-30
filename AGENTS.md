@@ -17,7 +17,7 @@ actionlint .github/workflows/*.yml template/*/.github/workflows/*.yml
 shellcheck scripts/*.sh && shellcheck --shell=sh template/node/.husky/*
 npx markdownlint-cli2 && mdformat --check .
 
-scripts/apply.sh <node|python|tex|core> <target-dir> [--force]
+scripts/apply.sh <node|python|tex|core> <target-dir> [--force|--diff]
 scripts/configure.sh <owner/repo> [--apply|--diff]   # dry run by default
 ```
 

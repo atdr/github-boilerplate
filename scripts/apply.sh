@@ -2,9 +2,11 @@
 # Copies the boilerplate into a repository: template/core first, then the
 # overlay for its ecosystem, which wins where both have a file.
 #
-# Usage: scripts/apply.sh <node|python|tex|core> <target-dir> [--force]
+# Usage: scripts/apply.sh <node|python|tex|core> <target-dir> [--force|--diff]
 #
 # Existing files in the target are left alone and listed, unless --force.
+# --diff changes nothing: it shows how the target's copies differ from the
+# template, and which template files it lacks, and exits 1 if any do.
 # Placeholders (__OWNER__, __REPO__) are filled from the target's origin
 # remote, and reusable workflow pins are set to this boilerplate's current
 # release. Written for bash 3.2 (macOS's stock /bin/bash).
@@ -12,15 +14,15 @@
 set -euo pipefail
 
 usage() {
-	echo "usage: $0 <node|python|tex|core> <target-dir> [--force]" >&2
+	echo "usage: $0 <node|python|tex|core> <target-dir> [--force|--diff]" >&2
 	exit 2
 }
 
 [ $# -ge 2 ] || usage
 overlay=$1
 target=$2
-force=${3:-}
-[ -z "$force" ] || [ "$force" = --force ] || usage
+mode=${3:-}
+[ -z "$mode" ] || [ "$mode" = --force ] || [ "$mode" = --diff ] || usage
 
 here=$(cd "$(dirname "$0")/.." && pwd)
 case "$overlay" in
@@ -57,23 +59,9 @@ else
 	ref=v$version
 fi
 
-copied=()
-skipped=()
-# Overlay files replace core files of the same path, so settle the winning
-# source for each path (the last one listed) before copying anything.
-winners=$(
-	for src in "${sources[@]}"; do
-		(cd "$src" && find . \( -type f -o -type l \) | sed 's#^\./##') |
-			while IFS= read -r rel; do printf '%s\t%s\n' "$rel" "$src"; done
-	done | awk -F '\t' '{ w[$1] = $2 } END { for (p in w) print p "\t" w[p] }' | sort
-)
-
-while IFS="$(printf '\t')" read -r rel src; do
-	dest="$target/$rel"
-	if { [ -e "$dest" ] || [ -L "$dest" ]; } && [ "$force" != --force ]; then
-		skipped+=("$rel")
-		continue
-	fi
+# One template file, placeholders filled and pins set, written to $2.
+render() {
+	local src=$1 rel=$2 dest=$3
 	mkdir -p "$(dirname "$dest")"
 	if [ -L "$src/$rel" ]; then
 		rm -f "$dest"
@@ -86,6 +74,66 @@ while IFS="$(printf '\t')" read -r rel src; do
 			"$src/$rel" >"$dest"
 		[ ! -x "$src/$rel" ] || chmod +x "$dest"
 	fi
+}
+
+copied=()
+skipped=()
+# Overlay files replace core files of the same path, so settle the winning
+# source for each path (the last one listed) before copying anything.
+winners=$(
+	for src in "${sources[@]}"; do
+		(cd "$src" && find . \( -type f -o -type l \) | sed 's#^\./##') |
+			while IFS= read -r rel; do printf '%s\t%s\n' "$rel" "$src"; done
+	done | awk -F '\t' '{ w[$1] = $2 } END { for (p in w) print p "\t" w[p] }' | sort
+)
+
+if [ "$mode" = --diff ]; then
+	# Starting points the repo is meant to rewrite: listed, never compared.
+	skeletons=" README.md AGENTS.md LICENSE "
+	rendered=$(mktemp -d)
+	trap 'rm -rf "$rendered"' EXIT
+	differs=0
+	missing=()
+	unchecked=()
+	while IFS="$(printf '\t')" read -r rel src; do
+		case "$skeletons" in *" $rel "*)
+			unchecked+=("$rel")
+			continue
+			;;
+		esac
+		if [ ! -e "$target/$rel" ] && [ ! -L "$target/$rel" ]; then
+			missing+=("$rel")
+			continue
+		fi
+		render "$src" "$rel" "$rendered/$rel"
+		if [ -L "$rendered/$rel" ] || [ -L "$target/$rel" ]; then
+			[ "$(readlink "$rendered/$rel" 2>/dev/null)" = "$(readlink "$target/$rel" 2>/dev/null)" ] && continue
+			echo "--- $rel: symlink differs" \
+				"(template -> $(readlink "$rendered/$rel"), repo: $(readlink "$target/$rel" 2>/dev/null || echo 'a file'))"
+			differs=1
+		elif ! diff -u --label "template/$rel" --label "$rel" "$rendered/$rel" "$target/$rel"; then
+			differs=1
+		fi
+	done <<<"$winners"
+	echo
+	echo "$owner/$repo against the $overlay template at $ref:"
+	[ "$differs" = 0 ] && echo "  every copied file matches" || echo "  copied files differ (diff above: - template, + repo)"
+	if [ ${#missing[@]} -gt 0 ]; then
+		echo "  missing from the repo:"
+		printf '    %s\n' "${missing[@]}"
+	fi
+	echo "  not compared, as they are written to be rewritten: ${unchecked[*]:-none}"
+	[ "$differs" = 0 ] && [ ${#missing[@]} -eq 0 ]
+	exit
+fi
+
+while IFS="$(printf '\t')" read -r rel src; do
+	dest="$target/$rel"
+	if { [ -e "$dest" ] || [ -L "$dest" ]; } && [ "$mode" != --force ]; then
+		skipped+=("$rel")
+		continue
+	fi
+	render "$src" "$rel" "$dest"
 	copied+=("$rel")
 done <<<"$winners"
 
@@ -115,8 +163,18 @@ node)
 	echo "  npm pkg set scripts.prepare=husky"
 	echo "  define the npm scripts ci.yml runs (lint, format:check, test) and coverage (writes lcov.info)"
 	;;
-python | tex)
+python)
 	echo "  pre-commit install"
+	;;
+tex)
+	echo "  pre-commit install"
+	# compile.yml runs atdr/latex-build, which needs no more in CI, but a
+	# local build does. atdr/latex-boilerplate holds the starting files.
+	[ -f "$target/.latexmkrc" ] ||
+		echo "  add a .latexmkrc for local builds (atdr/latex-boilerplate has one)"
+	[ -f "$target/texlive-packages.txt" ] ||
+		echo "  commit texlive-packages.txt, or let the first compile run generate it"
+	echo "  set root_file in compile.yml if the document is not main.tex"
 	;;
 esac
 echo "  fill in the README and AGENTS.md skeletons"
