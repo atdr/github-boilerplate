@@ -223,7 +223,39 @@ def test_ruleset_requires_exactly_the_core_gates():
 @pytest.mark.parametrize("overlay", ["node", "python"])
 def test_language_overlays_have_the_ci_gate_configure_requires(overlay):
     assert gate_names(ROOT / f"template/{overlay}/.github/workflows/ci.yml") == {"ci gate"}
-    assert '"ci gate"' in (ROOT / "scripts/configure.sh").read_text()
+    assert '"ci gate"' in (ROOT / "scripts/ruleset.jq").read_text()
+
+
+def ruleset(*gates: str) -> dict:
+    result = subprocess.run(
+        ["jq", "--arg", "gates", "".join(f"{g}\n" for g in gates),
+         "-f", str(ROOT / "scripts/ruleset.jq"), str(ROOT / "settings/ruleset-main.json")],
+        check=True, capture_output=True, text=True,
+    )
+    return json.loads(result.stdout)
+
+
+def required_checks(rules: dict) -> list[str] | None:
+    found = [r for r in rules["rules"] if r["type"] == "required_status_checks"]
+    if not found:
+        return None
+    return [c["context"] for c in found[0]["parameters"]["required_status_checks"]]
+
+
+@pytest.mark.parametrize(
+    "gates, expected",
+    [
+        (("pull-request gate", "checks gate", "ci gate"), ["pull-request gate", "checks gate", "ci gate"]),
+        (("pull-request gate", "checks gate"), ["pull-request gate", "checks gate"]),
+        (("checks gate",), ["checks gate"]),
+        ((), None),
+    ],
+)
+def test_ruleset_requires_only_the_gates_present(gates, expected):
+    rules = ruleset(*gates)
+    assert required_checks(rules) == expected
+    # Everything else in the ruleset applies whatever the repo's workflows.
+    assert {"deletion", "non_fast_forward", "pull_request"} <= {r["type"] for r in rules["rules"]}
 
 
 def test_template_claude_md_is_a_symlink():
