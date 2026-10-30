@@ -41,9 +41,10 @@ reaches a repo only when you copy it across. Run `--diff` from a checkout of the
 release the repo pins, or of the latest, to see what to bring over.
 
 For a new LaTeX document, start from
-[atdr/latex-boilerplate](https://github.com/atdr/latex-boilerplate) instead: it
-holds the document and the local build setup, with this template already
-applied.
+[atdr/latex-boilerplate](https://github.com/atdr/latex-boilerplate) ("Use this
+template"), which holds the document and the local build setup, then run
+`scripts/apply.sh tex` on the new repo for the checks it lacks. Files the
+document already has are left alone.
 
 Then apply the repository settings. It prints what it would change until you
 pass `--apply`:

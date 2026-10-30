@@ -65,6 +65,18 @@ def test_diff_shows_an_edited_copy_and_a_missing_one(tmp_path):
     assert "missing from the repo:\n    SECURITY.md" in result.stdout
 
 
+def test_apply_rejects_more_than_one_option(tmp_path):
+    repo = apply("core", tmp_path / "repo")
+    (repo / "SECURITY.md").write_text("edited\n")
+    result = subprocess.run(
+        [str(ROOT / "scripts" / "apply.sh"), "core", str(repo), "--force", "--diff"],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 2
+    assert (repo / "SECURITY.md").read_text() == "edited\n"
+
+
 def test_diff_leaves_the_skeletons_alone(tmp_path):
     repo = apply("core", tmp_path / "repo")
     (repo / "README.md").write_text("# Something else entirely\n")

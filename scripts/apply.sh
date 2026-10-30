@@ -18,7 +18,9 @@ usage() {
 	exit 2
 }
 
-[ $# -ge 2 ] || usage
+# At most one option: --force --diff together would silently drop --diff and
+# overwrite the files a comparison was meant to leave alone.
+[ $# -ge 2 ] && [ $# -le 3 ] || usage
 overlay=$1
 target=$2
 mode=${3:-}
