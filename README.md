@@ -28,8 +28,23 @@ Copy the template into a repo, new or existing:
 scripts/apply.sh node ~/dev/my-package
 ```
 
-Files already in the target are left alone and listed, so you can compare them
-by hand. `--force` overwrites them.
+Files already in the target are left alone and listed. `--force` overwrites
+them, and `--diff` changes nothing but shows how the repo's copies differ from
+the template, and which template files it lacks:
+
+```bash
+scripts/apply.sh node ~/dev/my-package --diff
+```
+
+The caller workflows and configs are copied, not pinned, so a template change
+reaches a repo only when you copy it across. Run `--diff` from a checkout of the
+release the repo pins, or of the latest, to see what to bring over.
+
+For a new LaTeX document, start from
+[atdr/latex-boilerplate](https://github.com/atdr/latex-boilerplate) ("Use this
+template"), which holds the document and the local build setup, then run
+`scripts/apply.sh tex` on the new repo for the checks it lacks. Files the
+document already has are left alone.
 
 Then apply the repository settings. It prints what it would change until you
 pass `--apply`:
