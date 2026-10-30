@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.3.0](https://github.com/atdr/github-boilerplate/compare/v0.2.3...v0.3.0) (2026-10-30)
+
+
+### Features
+
+* **scripts:** require only the gates a repo's workflows report ([#20](https://github.com/atdr/github-boilerplate/issues/20)) ([656799e](https://github.com/atdr/github-boilerplate/commit/656799eb9d6bb9b38f5131f988f1c700694b610f))
+* **scripts:** show how a repo's copies differ from the template ([#22](https://github.com/atdr/github-boilerplate/issues/22)) ([cef2ab2](https://github.com/atdr/github-boilerplate/commit/cef2ab2a30cf4157a9baf3c81155dee29ddfdef5))
+
+
+### Bug Fixes
+
+* **deps:** Bump DavidAnson/markdownlint-cli2-action in / ([#19](https://github.com/atdr/github-boilerplate/issues/19)) ([3254a4b](https://github.com/atdr/github-boilerplate/commit/3254a4b79f1abc1849a8286d33e9416c8c1038ff))
+
 ## [0.2.3](https://github.com/atdr/github-boilerplate/compare/v0.2.2...v0.2.3) (2026-10-29)
 
 
