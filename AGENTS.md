@@ -35,8 +35,9 @@ scripts/configure.sh <owner/repo> [--apply|--diff]   # dry run by default
   (`job.workflow_sha`) rather than copying it into each repo.
 - `settings/` holds the repository settings as data: merge types and the Actions
   token (`repository.json`, `actions-workflow.json`), security features, and the
-  branch ruleset. `configure.sh` sends them, adding `ci gate` to the ruleset
-  when the repo has a `ci.yml`; `--diff` reports drift from them.
+  branch ruleset. `configure.sh` sends them, requiring each gate only where the
+  repo has the workflow that reports it (`scripts/ruleset.jq`); `--diff` reports
+  drift from them.
 
 ## Conventions
 

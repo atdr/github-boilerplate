@@ -239,6 +239,11 @@ requires linear history, a PR with resolved conversations and squash merge, and
 the gates. No bypass actors, so it binds admins too. Zero required approvals:
 these are solo repos.
 
+Only the gates a repo's workflows report are required: a required check that
+never reports blocks every merge. A repo that keeps its own workflows instead of
+the boilerplate's, such as a template whose workflows must also run in the repos
+made from it, gets the rest of the ruleset with no required checks.
+
 The gates need not have run against the latest `main`. Requiring that makes
 every open PR, release-please's included, merge `main` in and rerun CI each time
 another PR lands, and in a solo repo two PRs rarely collide in a way the gates

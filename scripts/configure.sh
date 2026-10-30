@@ -6,8 +6,9 @@
 # Usage: scripts/configure.sh <owner/repo> [--apply|--diff]
 #
 # What a repo needs is read from its own workflows, not from which overlay it
-# was built from: the ci gate where it has a ci.yml, Actions may open PRs where
-# it runs release-please, and only the publishing environments it names.
+# was built from: each gate where it has that gate's workflow, Actions may open
+# PRs where it runs release-please, and only the publishing environments it
+# names.
 #
 # The settings themselves are data in settings/, and STANDARDS.md says why
 # each has its value. This script only sends them.
@@ -124,18 +125,28 @@ if [ "$visibility" = public ]; then
 	run gh api -X PATCH "repos/$repo/code-scanning/default-setup" --silent \
 		-f state=configured
 
-	# Every repo requires the core gates. A repo with a ci.yml (the language
-	# overlays, and this boilerplate itself) also requires its ci gate.
-	has_ci=false
-	if gh api "repos/$repo/contents/.github/workflows/ci.yml" --silent 2>/dev/null; then
-		has_ci=true
+	# A gate is required only where the repo has the workflow that reports it:
+	# `<stem> gate` comes from .github/workflows/<stem>.yml, and a ruleset
+	# requiring a check no workflow reports would block every merge. A repo
+	# with none (a template whose workflows must also run in the repos made
+	# from it) keeps the rest of the ruleset. scripts/ruleset.jq does the cut.
+	gates=
+	for stem in pull-request checks ci; do
+		case "
+$workflows
+" in
+		*"
+.github/workflows/$stem.yml
+"*) gates="$gates$stem gate
+" ;;
+		esac
+	done
+	ruleset=$(jq -c --arg gates "$gates" -f "$here/scripts/ruleset.jq" "$settings/ruleset-main.json")
+	if [ -n "$gates" ]; then
+		echo "requires: $(printf '%s' "$gates" | paste -sd, - | sed 's/,/, /g')"
+	else
+		echo "requires no status checks: none of pull-request.yml, checks.yml, ci.yml"
 	fi
-	ruleset=$(jq -c --argjson has_ci "$has_ci" '
-		if $has_ci then
-			(.rules[] | select(.type == "required_status_checks")
-				.parameters.required_status_checks) += [{"context": "ci gate", "integration_id": 15368}]
-		else . end' "$settings/ruleset-main.json")
-	echo "requires: pull-request gate, checks gate$([ "$has_ci" = false ] || echo ', ci gate')"
 	existing=$(gh api "repos/$repo/rulesets" --jq '.[] | select(.name == "main") | .id')
 	if [ -n "$existing" ]; then
 		run gh api -X PUT "repos/$repo/rulesets/$existing" --silent --input - <<<"$ruleset"
