@@ -22,9 +22,13 @@ permissions:
   contents: read
 
 # Queued, never cancelled: a run on main publishes the PDF as a release, and a
-# run regenerating the package list commits to the branch.
+# run regenerating the package list commits to the branch. GitHub keeps one
+# pending run per group and drops the older for a newer, which is fine between
+# pushes (the newest PDF is the one that matters) but would silently drop a
+# manual run, such as a package list update, so each of those gets a group of
+# its own.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.ref }}${{ github.event_name == 'workflow_dispatch' && format('-{0}', github.run_id) || '' }}
   cancel-in-progress: false
 
 # Compiles the document and publishes the PDF as a release tagged
