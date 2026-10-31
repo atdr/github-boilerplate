@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.1](https://github.com/atdr/github-boilerplate/compare/v0.3.0...v0.3.1) (2026-10-31)
+
+
+### Bug Fixes
+
+* **template:** leave .bib files to the reference manager, as CI does ([#24](https://github.com/atdr/github-boilerplate/issues/24)) ([67cf2f0](https://github.com/atdr/github-boilerplate/commit/67cf2f0c0a46de161fdba10afd50fccca8fd2f11))
+* **template:** ship codecov.yml only with the Node and Python overlays ([#25](https://github.com/atdr/github-boilerplate/issues/25)) ([8cbce9b](https://github.com/atdr/github-boilerplate/commit/8cbce9b4e77a561de5585ed5e83ab0668a77e791))
+
 ## [0.3.0](https://github.com/atdr/github-boilerplate/compare/v0.2.3...v0.3.0) (2026-10-31)
 
 
