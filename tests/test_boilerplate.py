@@ -273,6 +273,15 @@ def test_language_overlays_have_the_ci_gate_configure_requires(overlay):
     assert '"ci gate"' in (ROOT / "scripts/ruleset.jq").read_text()
 
 
+def test_codecov_ships_only_with_the_overlays_that_report_coverage():
+    # Only node and python report coverage; a core or TeX repo has none, so
+    # the file lives in each language overlay, not core.
+    shipped = sorted(p.parent.name for p in (ROOT / "template").glob("*/codecov.yml"))
+    assert shipped == ["node", "python"]
+    node, python = (ROOT / f"template/{o}/codecov.yml" for o in shipped)
+    assert node.read_text() == python.read_text()
+
+
 def ruleset(*gates: str) -> dict:
     result = subprocess.run(
         ["jq", "--arg", "gates", "".join(f"{g}\n" for g in gates),
