@@ -2,9 +2,9 @@
 
 ## Supported versions
 
-Only the latest release receives security fixes. Releases are cut automatically
-from `main` by release-please, so the latest release is always the supported
-one.
+Only the latest commit on `main`, and the release built from it if the
+repository publishes releases, receives security fixes. Older commits and
+releases are not patched; the fix lands on `main` and ships in the next release.
 
 ## Reporting a vulnerability
 
@@ -16,7 +16,7 @@ form. That opens a private thread visible only to you and the maintainer.
 
 Please include:
 
-- The version you are running
+- The release or commit you are running
 - What an attacker can do, and what access they need to do it
 - Steps to reproduce, or a proof of concept
 
