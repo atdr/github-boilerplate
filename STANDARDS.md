@@ -88,8 +88,8 @@ writable `contents` token.
   with `cancel-in-progress: false`, so runs queue. GitHub keeps only one pending
   run per group and replaces it with a newer one, which is fine when the newer
   run covers the older (a release from `main`). Where each run is distinct (a
-  prerelease of a given version), key the group by it. A publish cancelled
-  halfway can leave a tag with no package.
+  prerelease of a given version, a manual run), key the group by it. A publish
+  cancelled halfway can leave a tag with no package.
 - **PR only workflows** (title checks) may cancel unconditionally.
 
 ### Gates
