@@ -7,6 +7,9 @@ repos:
     rev: v0.5.7
     hooks:
       - id: tex-fmt
+        # Not .bib, matching latex-build's format_check: a reference manager
+        # usually exports them, and its next export would undo the formatting.
+        files: \.(tex|cls|sty)$
   - repo: https://github.com/DavidAnson/markdownlint-cli2
     rev: v0.24.0
     hooks:
