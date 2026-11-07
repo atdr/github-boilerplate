@@ -11,7 +11,7 @@ mdformat-gfm==1.0.0
 # rewrites it into a horizontal rule and a heading. Never add a codeformatter
 # plugin (mdformat-black and the like): mdformat enables every installed one
 # and would reformat code inside fences.
-mdformat-frontmatter==2.1.2
+mdformat-frontmatter==2.2.0
 # Footnotes, which GitHub renders. Without this mdformat escapes each
 # definition (`\[^note\]:`), and the reference no longer links to it.
 mdformat-footnote==0.1.3
