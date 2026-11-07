@@ -1,6 +1,6 @@
 # Tools only this repo's own CI uses. The pins reusable workflows install in
 # callers live in scripts/requirements-*.txt, under their own Dependabot entry,
 # because a bump there changes what every caller runs.
-pytest==9.1.1
+pytest==9.2.0
 # The actionlint binary, packaged for pip so no Go toolchain or Docker is needed.
 actionlint-py==1.7.12.25
