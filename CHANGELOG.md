@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.3.2](https://github.com/atdr/github-boilerplate/compare/v0.3.1...v0.3.2) (2026-11-07)
+
+
+### Bug Fixes
+
+* **deps:** Bump astral-sh/setup-uv in / ([#31](https://github.com/atdr/github-boilerplate/issues/31)) ([395d25d](https://github.com/atdr/github-boilerplate/commit/395d25d034910b686de796d33ac59d8b42a47b41))
+* **deps:** Bump mdformat-frontmatter from 2.1.2 to 2.2.0 in /scripts ([#28](https://github.com/atdr/github-boilerplate/issues/28)) ([571b38a](https://github.com/atdr/github-boilerplate/commit/571b38abfdee6d529dfd14e157f7e78c542624b6))
+* **template:** state a security policy that holds without release-please ([#27](https://github.com/atdr/github-boilerplate/issues/27)) ([189ad4a](https://github.com/atdr/github-boilerplate/commit/189ad4ac695bf792656daf07baf52eafe713759f))
+
 ## [0.3.1](https://github.com/atdr/github-boilerplate/compare/v0.3.0...v0.3.1) (2026-10-31)
 
 
