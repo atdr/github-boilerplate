@@ -14,7 +14,8 @@
 # each has its value. This script only sends them.
 #
 # Prints what it would change, and changes nothing, unless --apply is given.
-# --diff compares the repo's live merge and Actions settings with settings/.
+# --diff compares the repo's live merge and Actions settings with settings/,
+# and reports classic branch protection, which the ruleset does not replace.
 # Actions may open PRs only in a repo whose workflows run release-please.
 # Needs an authenticated gh. Written for bash 3.2 (macOS's stock /bin/bash).
 
@@ -50,7 +51,8 @@ drift() {
 uses_release_please=false
 workflow_settings=$(mktemp)
 api_error=$(mktemp)
-trap 'rm -f "$workflow_settings" "$api_error"' EXIT
+protection=$(mktemp)
+trap 'rm -f "$workflow_settings" "$api_error" "$protection"' EXIT
 # Only a 404 means the repo has no workflows folder. gh prints that error body
 # to stdout, so the output only counts when the call succeeded.
 if ! workflows=$(gh api "repos/$repo/contents/.github/workflows" --jq '.[].path' 2>"$api_error"); then
@@ -83,15 +85,47 @@ else
 	cp "$settings/actions-workflow.json" "$workflow_settings"
 fi
 
+# Classic branch protection on the default branch, left in $protection.
+# GitHub enforces it alongside the ruleset, not instead of it, so one that
+# still requires checks the workflows no longer report blocks every merge
+# however the ruleset reads. A 404 means the branch has none, and private
+# repos on GitHub Free cannot have it at all; anything else aborts. Called
+# directly, never in $(...), so that the exit stops the script.
+default_branch=$(gh api "repos/$repo" --jq .default_branch)
+# A branch name may hold `#`, `?`, `;` or `$`, so it goes into a path encoded:
+# unencoded, `release#1` would end the path at the `#` and its 404 would read
+# as no protection. `/` stays as is, which is how the branches API takes it.
+protection_endpoint=repos/$repo/branches/$(jq -rn --arg b "$default_branch" '$b | @uri | gsub("%2F"; "/")')/protection
+has_classic_protection() {
+	if gh api "$protection_endpoint" >"$protection" 2>"$api_error"; then
+		return 0
+	fi
+	if grep -e 'HTTP 404' -e 'Upgrade to GitHub Pro' "$api_error" >/dev/null; then
+		return 1
+	fi
+	echo "could not read $repo's branch protection:" >&2
+	cat "$api_error" >&2
+	exit 1
+}
+protection_summary() {
+	jq -r '(.required_status_checks.contexts // [])
+		| if length == 0 then "no status checks" else "requires " + join(", ") end' "$protection"
+}
+
 if [ "$mode" = --diff ]; then
 	# Command substitution drops trailing newlines, so print each part rather
 	# than concatenating them.
 	repository=$(drift "repos/$repo" "$settings/repository.json")
 	workflow=$(drift "repos/$repo/actions/permissions/workflow" "$workflow_settings")
-	if [ -n "$repository$workflow" ]; then
+	classic=
+	if has_classic_protection; then
+		classic="  classic branch protection on $default_branch ($(protection_summary)) -> none, the ruleset replaces it"
+	fi
+	if [ -n "$repository$workflow$classic" ]; then
 		echo "$repo differs from settings/ (live -> tracked):"
 		[ -z "$repository" ] || echo "$repository"
 		[ -z "$workflow" ] || echo "$workflow"
+		[ -z "$classic" ] || echo "$classic"
 		exit 1
 	fi
 	echo "$repo matches settings/ (release-please: $uses_release_please)"
@@ -152,6 +186,25 @@ $workflows
 		run gh api -X PUT "repos/$repo/rulesets/$existing" --silent --input - <<<"$ruleset"
 	else
 		run gh api -X POST "repos/$repo/rulesets" --silent --input - <<<"$ruleset"
+	fi
+	case "$gates" in
+	*"pull-request gate"*"checks gate"*"ci gate"*) ;;
+	*)
+		# The gates come from the workflows on the default branch, so a PR
+		# that adds one is not required until it merges.
+		echo "only gates whose workflow is on $default_branch are required: if a" \
+			"PR adds one, rerun --apply after it merges"
+		;;
+	esac
+	# Left in place rather than deleted: it can hold settings the ruleset does
+	# not, and removing it is the owner's call.
+	if has_classic_protection; then
+		echo "warning: $default_branch also has classic branch protection" \
+			"($(protection_summary)). GitHub enforces both, so a check it requires" \
+			"that no workflow reports blocks every merge. Once the ruleset covers" \
+			"it, remove it with:" >&2
+		# Quoted with %q, so the line is safe to paste whatever the name holds.
+		printf '  gh api -X DELETE %q\n' "$protection_endpoint" >&2
 	fi
 else
 	# GitHub Free has no rulesets, branch protection, secret scanning or
