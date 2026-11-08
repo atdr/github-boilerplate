@@ -92,8 +92,12 @@ fi
 # repos on GitHub Free cannot have it at all; anything else aborts. Called
 # directly, never in $(...), so that the exit stops the script.
 default_branch=$(gh api "repos/$repo" --jq .default_branch)
+# A branch name may hold `#`, `?`, `;` or `$`, so it goes into a path encoded:
+# unencoded, `release#1` would end the path at the `#` and its 404 would read
+# as no protection. `/` stays as is, which is how the branches API takes it.
+protection_endpoint=repos/$repo/branches/$(jq -rn --arg b "$default_branch" '$b | @uri | gsub("%2F"; "/")')/protection
 has_classic_protection() {
-	if gh api "repos/$repo/branches/$default_branch/protection" >"$protection" 2>"$api_error"; then
+	if gh api "$protection_endpoint" >"$protection" 2>"$api_error"; then
 		return 0
 	fi
 	if grep -e 'HTTP 404' -e 'Upgrade to GitHub Pro' "$api_error" >/dev/null; then
@@ -199,7 +203,8 @@ $workflows
 			"($(protection_summary)). GitHub enforces both, so a check it requires" \
 			"that no workflow reports blocks every merge. Once the ruleset covers" \
 			"it, remove it with:" >&2
-		echo "  gh api -X DELETE repos/$repo/branches/$default_branch/protection" >&2
+		# Quoted with %q, so the line is safe to paste whatever the name holds.
+		printf '  gh api -X DELETE %q\n' "$protection_endpoint" >&2
 	fi
 else
 	# GitHub Free has no rulesets, branch protection, secret scanning or
