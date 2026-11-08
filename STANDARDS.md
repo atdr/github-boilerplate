@@ -250,6 +250,13 @@ another PR lands, and in a solo repo two PRs rarely collide in a way the gates
 would catch. CI on `main` after the merge still does. "Update branch" stays
 available for when it is wanted.
 
+**The ruleset replaces classic branch protection.** GitHub enforces both, so
+protection left over from before a repo adopted the gates still requires the
+check names its old workflows reported, and blocks every merge once those checks
+are gone. `--diff` reports it as drift. `--apply` warns and prints the command
+that removes it, but leaves it in place, since it can hold settings the ruleset
+does not.
+
 **Private repos on GitHub Free** get no rulesets, branch protection, secret
 scanning or private vulnerability reporting. `configure.sh` skips them rather
 than failing.
