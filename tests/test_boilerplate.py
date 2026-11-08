@@ -216,11 +216,20 @@ def test_catches_a_drifted_pre_commit_type_list(tmp_path):
     assert "commit-types" in rules(root)
 
 
-def test_catches_coverage_as_a_gate(repo):
-    def gate(c):
-        c["coverage"]["status"]["patch"]["default"]["informational"] = False
+@pytest.mark.parametrize("kind", ["project", "patch"])
+def test_catches_a_coverage_status_that_cannot_fail(repo, kind):
+    def always_green(c):
+        c["coverage"]["status"][kind]["default"]["informational"] = True
 
-    edit_yaml(repo / "codecov.yml", gate)
+    edit_yaml(repo / "codecov.yml", always_green)
+    assert "codecov" in rules(repo)
+
+
+def test_catches_a_project_status_with_no_threshold(repo):
+    def no_threshold(c):
+        del c["coverage"]["status"]["project"]["default"]["threshold"]
+
+    edit_yaml(repo / "codecov.yml", no_threshold)
     assert "codecov" in rules(repo)
 
 
