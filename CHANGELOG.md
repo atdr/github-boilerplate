@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.4.0](https://github.com/atdr/github-boilerplate/compare/v0.3.2...v0.4.0) (2026-11-08)
+
+
+### ⚠ BREAKING CHANGES
+
+* **conventions:** the conventions check fails on a codecov.yml that sets `informational: true` on either status or has no `threshold` on `project`. Update codecov.yml to match template/python/codecov.yml when taking this release.
+
+### Features
+
+* **conventions:** require Codecov statuses that can fail ([#38](https://github.com/atdr/github-boilerplate/issues/38)) ([868f834](https://github.com/atdr/github-boilerplate/commit/868f834b09a9e40c3e8d8ad2767d59e83db84f58))
+
+
+### Bug Fixes
+
+* **configure:** report classic branch protection the ruleset leaves ([#37](https://github.com/atdr/github-boilerplate/issues/37)) ([c9e4119](https://github.com/atdr/github-boilerplate/commit/c9e41198a244bcf6560cb88d7ad7207cd4eb090d))
+* **tex:** note the package list fallback branch in compile.yml ([#33](https://github.com/atdr/github-boilerplate/issues/33)) ([18d5878](https://github.com/atdr/github-boilerplate/commit/18d587825df7572ded5bac891a4c279e35ec5497))
+
 ## [0.3.2](https://github.com/atdr/github-boilerplate/compare/v0.3.1...v0.3.2) (2026-11-07)
 
 
