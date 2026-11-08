@@ -12,7 +12,10 @@ coverage:
         threshold: 0.1%
     patch:
       default:
-        target: auto
+        # Every changed line the tests can reach, not the project's own
+        # average: against `auto`, a patch at 90% passes on an 80% base while
+        # adding untested lines.
+        target: 100%
 comment:
   layout: 'condensed_header, diff, files'
   require_changes: true
