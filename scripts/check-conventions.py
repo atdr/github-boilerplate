@@ -292,16 +292,31 @@ def check_codecov(root: Path, f: Findings) -> None:
     path = root / "codecov.yml"
     if not path.is_file():
         return
+    # Both statuses report their real result. An informational status always
+    # passes, so a PR adding untested lines shows green and only Codecov's
+    # comment says otherwise. They still cannot block a merge, because the
+    # ruleset requires the gates and nothing else.
     status = ((load_yaml(path) or {}).get("coverage") or {}).get("status") or {}
     for kind in ("project", "patch"):
-        default = (status.get(kind) or {}).get("default") or {}
-        if default.get("informational") is not True:
+        default = (status.get(kind) or {}).get("default")
+        if not isinstance(default, dict):
+            f.add(path, "codecov", f"coverage.status.{kind}.default must be set")
+            continue
+        if default.get("informational") is True:
             f.add(
                 path,
                 "codecov",
-                f"coverage.status.{kind}.default.informational must be true: "
-                "coverage reports, it does not gate",
+                f"coverage.status.{kind}.default.informational must not be true: "
+                "the status has to be able to fail to say anything",
             )
+    project = (status.get("project") or {}).get("default") or {}
+    if isinstance(project, dict) and project.get("threshold") in (None, ""):
+        f.add(
+            path,
+            "codecov",
+            "coverage.status.project.default.threshold must be set (for example 0.1%), "
+            "so one untested line at high coverage does not turn the project status red",
+        )
 
 
 def uses_prettier(root: Path) -> bool:

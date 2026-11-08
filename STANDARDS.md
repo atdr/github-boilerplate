@@ -126,8 +126,12 @@ merging, confirm each gate reported.
   [dependabot-uv].
 - **Coverage reports, it does not gate** [codecov]. A separate job re-runs the
   suite under coverage on one version. The coverage run itself must pass; the
-  Codecov upload is `continue-on-error`, and both statuses in `codecov.yml` are
-  `informational`.
+  Codecov upload is `continue-on-error`. Both statuses in `codecov.yml` report
+  their real result, so a PR adding untested lines shows a red patch status, and
+  `project` sets a small `threshold` so rounding stays green. They are never
+  `informational`, which always passes and hides exactly that. What keeps them
+  from blocking a merge is the ruleset, which requires the gates and nothing
+  else.
 - **Coverage scope lives in project config** (`pyproject.toml`, the `coverage`
   npm script), not on the CI command line, so running it locally measures what
   CI measures.
