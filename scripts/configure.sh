@@ -78,6 +78,18 @@ done
 case "${all_workflows:-}" in
 *googleapis/release-please-action*) uses_release_please=true ;;
 esac
+
+# A repo whose owner commits straight to the default branch on purpose says so
+# by committing .github/admin-bypass; the ruleset then lets the admin role
+# bypass it (scripts/ruleset.jq). As above, only a 404 means no.
+admin_bypass=false
+if gh api "repos/$repo/contents/.github/admin-bypass" --silent 2>"$api_error"; then
+	admin_bypass=true
+elif ! grep 'HTTP 404' "$api_error" >/dev/null; then
+	echo "could not check $repo for .github/admin-bypass:" >&2
+	cat "$api_error" >&2
+	exit 1
+fi
 if [ "$uses_release_please" = true ]; then
 	jq -s '.[0] * .[1]' "$settings/actions-workflow.json" \
 		"$settings/actions-workflow-release-please.json" >"$workflow_settings"
@@ -175,11 +187,15 @@ $workflows
 " ;;
 		esac
 	done
-	ruleset=$(jq -c --arg gates "$gates" -f "$here/scripts/ruleset.jq" "$settings/ruleset-main.json")
+	ruleset=$(jq -c --arg gates "$gates" --arg admin_bypass "$admin_bypass" \
+		-f "$here/scripts/ruleset.jq" "$settings/ruleset-main.json")
 	if [ -n "$gates" ]; then
 		echo "requires: $(printf '%s' "$gates" | paste -sd, - | sed 's/,/, /g')"
 	else
 		echo "requires no status checks: none of pull-request.yml, checks.yml, ci.yml"
+	fi
+	if [ "$admin_bypass" = true ]; then
+		echo "admins may bypass the ruleset: the repo commits .github/admin-bypass"
 	fi
 	existing=$(gh api "repos/$repo/rulesets" --jq '.[] | select(.name == "main") | .id')
 	if [ -n "$existing" ]; then

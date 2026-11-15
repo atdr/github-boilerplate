@@ -6,6 +6,10 @@
 # gate present the required_status_checks rule is dropped, since a rule
 # requiring nothing is rejected and one requiring an absent check blocks
 # every merge.
+#
+# $admin_bypass is "true" where the repo commits .github/admin-bypass: the
+# repository admin role may then push to the default branch directly, while
+# everyone else (Dependabot included) still goes through a gated PR.
 
 ($gates | split("\n") | map(select(. != ""))) as $present
 | .rules |= map(
@@ -18,3 +22,6 @@
     else . end)
 | .rules |= map(select(.type != "required_status_checks"
     or (.parameters.required_status_checks | length) > 0))
+| .bypass_actors = (if $admin_bypass == "true"
+    then [{"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}]
+    else [] end)
