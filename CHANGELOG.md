@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.0.0](https://github.com/atdr/github-boilerplate/compare/v0.4.0...v1.0.0) (2026-11-15)
+
+
+### Features
+
+* **configure:** let a repo opt its admin out of the ruleset ([#40](https://github.com/atdr/github-boilerplate/issues/40)) ([e5bcc32](https://github.com/atdr/github-boilerplate/commit/e5bcc32e79a791daac1021682b2062723598ae21))
+
+
+### Miscellaneous Chores
+
+* release 1.0.0 ([#43](https://github.com/atdr/github-boilerplate/issues/43)) ([5951b2e](https://github.com/atdr/github-boilerplate/commit/5951b2e7d2a817213939275adf286d5e2351f3e7))
+
 ## [0.4.0](https://github.com/atdr/github-boilerplate/compare/v0.3.2...v0.4.0) (2026-11-08)
 
 
