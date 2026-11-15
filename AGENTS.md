@@ -46,15 +46,16 @@ scripts/configure.sh <owner/repo> [--apply|--diff]   # dry run by default
   `feat fix perf refactor test docs chore ci`. The list lives in
   `conventional.yml` and `check-conventions.py`; `tests/` fails if they
   disagree.
-- **Versioning:** release-please, pre-1.0. A breaking change bumps the minor
-  version, a `feat` the minor, a `fix` the patch. A change to a reusable
+- **Versioning:** release-please, semver. A breaking change bumps the major
+  version, a `feat` the minor, a `fix` the patch; STANDARDS.md (Versions, under
+  the reusable workflows) says what counts as breaking. A change to a reusable
   workflow or to `template/` changes what callers get, so it is `feat` or `fix`,
   never `chore`.
 - **Template pins:** every `atdr/github-boilerplate/...@v0.0.0` line in
-  `template/` ends in `# x-release-please-version` and its file is listed in
-  `release-please-config.json`'s `extra-files`, so the release PR rewrites the
-  pins to the version it releases. `apply.sh` strips the marker. A test checks
-  both halves.
+  `template/` and README.md ends in `# x-release-please-version` and its file is
+  listed in `release-please-config.json`'s `extra-files`, so the release PR
+  rewrites the pins to the version it releases. `apply.sh` strips the marker. A
+  test checks both halves.
 - **Placeholders:** `__OWNER__` and `__REPO__` in template files, filled by
   `apply.sh`.
 - **Scripts** target bash 3.2 (macOS's `/bin/bash`): no `mapfile`, no
