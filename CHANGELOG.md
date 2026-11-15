@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.0](https://github.com/atdr/github-boilerplate/compare/v1.0.0...v1.1.0) (2026-11-15)
+
+
+### Features
+
+* auto-merge Dependabot's patch and minor bumps ([#44](https://github.com/atdr/github-boilerplate/issues/44)) ([875b55f](https://github.com/atdr/github-boilerplate/commit/875b55f625b91e8fa79e95dfc21f1d56c45d4c71))
+
 ## [1.0.0](https://github.com/atdr/github-boilerplate/compare/v0.4.0...v1.0.0) (2026-11-15)
 
 
