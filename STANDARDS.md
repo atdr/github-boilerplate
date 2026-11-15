@@ -36,10 +36,20 @@ repo's own workflow files are thin callers.
 Copied workflows drift: buzz-me-in and philipsair started from the same CI and
 ended up with different Node matrices, timeouts and audit handling.
 
-**Pinning:** callers pin an exact tag (`@v0.3.1`). While this repo is pre-1.0 a
-breaking change bumps the minor version, so a moving `v0` tag would carry
-breaking changes to every caller. At 1.0 a moving `v1` tag can follow
-atdr/latex-build's pattern.
+**Pinning:** callers pin an exact tag (`@v1.2.3`), and Dependabot opens a PR for
+each release, so every change runs through each caller's own CI before it lands
+there. There is no moving `v1` tag: one would carry an unreviewed change to
+every repo at once, and the template pins and the conventions fetch
+(`job.workflow_sha`) are built around exact tags anyway.
+
+**Versions** follow semver. A release is major when it can turn a caller that
+passed before red, or needs the caller to change: a reusable workflow input,
+secret or job name removed or renamed, a gate renamed, or a new rule in
+`check-conventions.py` that a compliant repo can fail (0.4.0's Codecov rule
+would be one). A new check that passes for every repo already following these
+standards, or a new optional input, is minor. Each breaking change says what
+callers must do in its `BREAKING CHANGE:` footer, which release-please carries
+into the changelog.
 
 **Exception:** publishing stays in the caller's own file. npm's and PyPI's
 trusted publishers name the workflow file that publishes, and that has to be the

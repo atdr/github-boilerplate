@@ -8,7 +8,10 @@ Reusable GitHub Actions workflows, a repository template and the scripts that
 apply them: the setup shared by atdr's repositories, written down once.
 [STANDARDS.md](STANDARDS.md) explains every decision.
 
-Pre-release. Expect breaking changes between minor versions until 1.0.
+Versioned with semver since 1.0: a change that can turn a passing caller red is
+a major release.
+[STANDARDS.md](STANDARDS.md#reusable-workflows-pinned-to-exact-tags) says what
+counts.
 
 ## What you get
 
@@ -59,7 +62,7 @@ Or call a reusable workflow directly:
 ```yaml
 jobs:
   node:
-    uses: atdr/github-boilerplate/.github/workflows/node-ci.yml@v0.1.0
+    uses: atdr/github-boilerplate/.github/workflows/node-ci.yml@v0.4.0 # x-release-please-version
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 ```

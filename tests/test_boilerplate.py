@@ -251,7 +251,8 @@ def test_every_template_pin_is_rewritten_on_release():
     assert all(isinstance(e, dict) and e.get("type") == "generic" for e in entries)
     extra_files = {e["path"] for e in entries}
     pinned = set()
-    for path in (ROOT / "template").rglob("*.yml"):
+    # README's example pin too, so it never shows a stale version.
+    for path in [*(ROOT / "template").rglob("*.yml"), ROOT / "README.md"]:
         for line in path.read_text().splitlines():
             if PIN.search(line):
                 assert line.endswith("# x-release-please-version"), (path, line)
@@ -528,13 +529,11 @@ def test_badges_are_flat_square_shields(readme):
             assert "branch=main" in image, image
 
 
-def test_first_release_is_pre_1_0():
-    # With no earlier tag, release-please ignores the manifest's 0.0.0 and
-    # cuts its default initial version, 1.0.0, unless told otherwise.
-    config = json.loads((ROOT / "release-please-config.json").read_text())
-    package = config["packages"]["."]
-    assert package["initial-version"] == "0.1.0"
-    assert package["bump-minor-pre-major"] is True
+def test_breaking_changes_bump_the_major():
+    # Pre-1.0 the config made a breaking change bump the minor. Left in, the
+    # options would do nothing now, but would read as if they still applied.
+    package = json.loads((ROOT / "release-please-config.json").read_text())["packages"]["."]
+    assert not {"bump-minor-pre-major", "bump-patch-for-minor-pre-major", "initial-version"} & set(package)
 
 
 def test_catches_prettier_and_mdformat_both_owning_markdown(repo):
