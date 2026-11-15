@@ -16,6 +16,10 @@
         },
         {
           "type": "generic",
+          "path": "template/core/.github/workflows/auto-merge.yml"
+        },
+        {
+          "type": "generic",
           "path": "template/core/.github/workflows/pull-request.yml"
         },
         {

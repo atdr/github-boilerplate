@@ -50,9 +50,10 @@ drift() {
 # --apply switch the permission off in a repo whose releases need it.
 uses_release_please=false
 workflow_settings=$(mktemp)
+repository_settings=$(mktemp)
 api_error=$(mktemp)
 protection=$(mktemp)
-trap 'rm -f "$workflow_settings" "$api_error" "$protection"' EXIT
+trap 'rm -f "$workflow_settings" "$repository_settings" "$api_error" "$protection"' EXIT
 # Only a 404 means the repo has no workflows folder. gh prints that error body
 # to stdout, so the output only counts when the call succeeded.
 if ! workflows=$(gh api "repos/$repo/contents/.github/workflows" --jq '.[].path' 2>"$api_error"); then
@@ -97,6 +98,36 @@ else
 	cp "$settings/actions-workflow.json" "$workflow_settings"
 fi
 
+# A gate is required only where the repo has the workflow that reports it:
+# `<stem> gate` comes from .github/workflows/<stem>.yml, and a ruleset
+# requiring a check no workflow reports would block every merge. A repo with
+# none (a template whose workflows must also run in the repos made from it)
+# keeps the rest of the ruleset. scripts/ruleset.jq does the cut.
+gates=
+for stem in pull-request checks ci; do
+	case "
+$workflows
+" in
+	*"
+.github/workflows/$stem.yml
+"*) gates="$gates$stem gate
+" ;;
+	esac
+done
+
+# Auto-merge only where the main ruleset requires at least one gate: with
+# nothing required, auto-merge merges a Dependabot PR at once, before any
+# check has run. That rules out private repos (GitHub Free gives them no
+# ruleset) and any repo with none of the gate workflows.
+visibility=$(gh api "repos/$repo" --jq .visibility)
+if [ "$visibility" = public ] && [ -n "$gates" ]; then
+	auto_merge=true
+else
+	auto_merge=false
+fi
+jq --argjson auto_merge "$auto_merge" '. + {allow_auto_merge: $auto_merge}' \
+	"$settings/repository.json" >"$repository_settings"
+
 # Classic branch protection on the default branch, left in $protection.
 # GitHub enforces it alongside the ruleset, not instead of it, so one that
 # still requires checks the workflows no longer report blocks every merge
@@ -127,7 +158,7 @@ protection_summary() {
 if [ "$mode" = --diff ]; then
 	# Command substitution drops trailing newlines, so print each part rather
 	# than concatenating them.
-	repository=$(drift "repos/$repo" "$settings/repository.json")
+	repository=$(drift "repos/$repo" "$repository_settings")
 	workflow=$(drift "repos/$repo/actions/permissions/workflow" "$workflow_settings")
 	classic=
 	if has_classic_protection; then
@@ -154,10 +185,16 @@ run() {
 	fi
 }
 
-visibility=$(gh api "repos/$repo" --jq .visibility)
 echo "$repo is $visibility"
 
-run gh api -X PATCH "repos/$repo" --silent --input "$settings/repository.json"
+# Auto-merge is switched on only after the ruleset that gates it is in place
+# (below), so a failure in between never leaves it on with nothing required.
+if [ "$auto_merge" = true ]; then
+	run gh api -X PATCH "repos/$repo" --silent --input "$settings/repository.json"
+else
+	run gh api -X PATCH "repos/$repo" --silent --input "$repository_settings"
+fi
+echo "auto-merge: $auto_merge (Dependabot's patch and minor bumps merge themselves only if so)"
 echo "runs release-please: $uses_release_please (Actions may open PRs only if so)"
 run gh api -X PUT "repos/$repo/actions/permissions/workflow" --silent \
 	--input "$workflow_settings"
@@ -171,22 +208,6 @@ if [ "$visibility" = public ]; then
 	run gh api -X PATCH "repos/$repo/code-scanning/default-setup" --silent \
 		-f state=configured
 
-	# A gate is required only where the repo has the workflow that reports it:
-	# `<stem> gate` comes from .github/workflows/<stem>.yml, and a ruleset
-	# requiring a check no workflow reports would block every merge. A repo
-	# with none (a template whose workflows must also run in the repos made
-	# from it) keeps the rest of the ruleset. scripts/ruleset.jq does the cut.
-	gates=
-	for stem in pull-request checks ci; do
-		case "
-$workflows
-" in
-		*"
-.github/workflows/$stem.yml
-"*) gates="$gates$stem gate
-" ;;
-		esac
-	done
 	ruleset=$(jq -c --arg gates "$gates" --arg admin_bypass "$admin_bypass" \
 		-f "$here/scripts/ruleset.jq" "$settings/ruleset-main.json")
 	if [ -n "$gates" ]; then
@@ -202,6 +223,9 @@ $workflows
 		run gh api -X PUT "repos/$repo/rulesets/$existing" --silent --input - <<<"$ruleset"
 	else
 		run gh api -X POST "repos/$repo/rulesets" --silent --input - <<<"$ruleset"
+	fi
+	if [ "$auto_merge" = true ]; then
+		run gh api -X PATCH "repos/$repo" --silent -F allow_auto_merge=true
 	fi
 	case "$gates" in
 	*"pull-request gate"*"checks gate"*"ci gate"*) ;;

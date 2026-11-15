@@ -5,6 +5,11 @@ updates:
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    # A new release waits three days before Dependabot offers it, time for a
+    # compromised one to be caught and pulled before patch and minor bumps
+    # auto-merge (auto-merge.yml). Security updates skip the wait.
+    cooldown:
+      default-days: 3
     # `prefix` covers production dependencies, `prefix-development` the rest.
     # A production bump changes what users install, so it lands as `fix` and
     # release-please cuts a patch release with a changelog line. Dev tooling

@@ -25,9 +25,10 @@ scripts/configure.sh <owner/repo> [--apply|--diff]   # dry run by default
 
 - `.github/workflows/` holds two kinds of workflow. **Reusable** ones
   (`on: workflow_call`: `conventional`, `node-ci`, `python-ci`, `markdown`,
-  `conventions`) run in callers' repos. **This repo's own** (`ci`, `checks`,
-  `pull-request`, `release-please`) call the reusable ones locally
-  (`uses: ./...`), so a change is exercised here before any caller can pin it.
+  `conventions`, `dependabot-auto-merge`) run in callers' repos. **This repo's
+  own** (`ci`, `checks`, `pull-request`, `auto-merge`, `release-please`) call
+  the reusable ones locally (`uses: ./...`), so a change is exercised here
+  before any caller can pin it.
 - `template/core` is copied into every repo, then `template/<overlay>` on top;
   an overlay file replaces the core file at the same path.
 - `scripts/check-conventions.py` enforces the checkable rules in `STANDARDS.md`.

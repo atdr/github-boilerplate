@@ -34,6 +34,10 @@ updates:
     directory: /scripts
     schedule:
       interval: weekly
+    # Three days before a new release is offered, as for actions: patch and
+    # minor bumps auto-merge (auto-merge.yml).
+    cooldown:
+      default-days: 3
     commit-message:
       prefix: fix(deps)
       prefix-development: chore(deps)
@@ -42,6 +46,10 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # Three days before a new release is offered, as for actions: patch and
+    # minor bumps auto-merge (auto-merge.yml).
+    cooldown:
+      default-days: 3
     commit-message:
       prefix: chore(deps)
       prefix-development: chore(deps)
