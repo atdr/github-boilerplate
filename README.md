@@ -62,7 +62,7 @@ Or call a reusable workflow directly:
 ```yaml
 jobs:
   node:
-    uses: atdr/github-boilerplate/.github/workflows/node-ci.yml@v0.4.0 # x-release-please-version
+    uses: atdr/github-boilerplate/.github/workflows/node-ci.yml@v1.0.0 # x-release-please-version
     secrets:
       CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 ```
