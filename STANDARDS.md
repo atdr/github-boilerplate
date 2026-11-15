@@ -243,6 +243,14 @@ requires linear history, a PR with resolved conversations and squash merge, and
 the gates. No bypass actors, so it binds admins too. Zero required approvals:
 these are solo repos.
 
+The exception is a repo whose owner commits straight to the default branch on
+purpose, such as a link list where each change is one validated line and a PR
+adds ceremony without safety. It commits `.github/admin-bypass`, a file whose
+comment says why, and the ruleset then lets the repository admin role bypass it.
+Everyone else, Dependabot included, still merges through a gated PR, so the repo
+keeps its gates for the changes that need them. The file, not a flag to
+`configure.sh`, records the choice, so rerunning `--apply` keeps it.
+
 Only the gates a repo's workflows report are required: a required check that
 never reports blocks every merge. A repo that keeps its own workflows instead of
 the boilerplate's, such as a template whose workflows must also run in the repos
