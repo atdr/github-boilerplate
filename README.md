@@ -16,7 +16,8 @@ counts.
 ## What you get
 
 - **Reusable workflows**, pinned by tag: Node and Python CI, Markdown lint,
-  conventional commit and PR title checks, and a conventions check.
+  conventional commit and PR title checks, a conventions check, and auto-merge
+  for Dependabot's patch and minor bumps.
 - **A template**: a shared core (issue and PR templates, Dependabot,
   `SECURITY.md`, `AGENTS.md`, lint settings, caller workflows) plus an overlay
   for Node, Python or TeX.

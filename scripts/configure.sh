@@ -50,9 +50,10 @@ drift() {
 # --apply switch the permission off in a repo whose releases need it.
 uses_release_please=false
 workflow_settings=$(mktemp)
+repository_settings=$(mktemp)
 api_error=$(mktemp)
 protection=$(mktemp)
-trap 'rm -f "$workflow_settings" "$api_error" "$protection"' EXIT
+trap 'rm -f "$workflow_settings" "$repository_settings" "$api_error" "$protection"' EXIT
 # Only a 404 means the repo has no workflows folder. gh prints that error body
 # to stdout, so the output only counts when the call succeeded.
 if ! workflows=$(gh api "repos/$repo/contents/.github/workflows" --jq '.[].path' 2>"$api_error"); then
@@ -97,6 +98,18 @@ else
 	cp "$settings/actions-workflow.json" "$workflow_settings"
 fi
 
+# Auto-merge only where the main ruleset requires the gates, which is public
+# repos: with nothing required, auto-merge merges a Dependabot PR at once,
+# before any check has run. Private repos on GitHub Free get no ruleset.
+visibility=$(gh api "repos/$repo" --jq .visibility)
+if [ "$visibility" = public ]; then
+	auto_merge=true
+else
+	auto_merge=false
+fi
+jq --argjson auto_merge "$auto_merge" '. + {allow_auto_merge: $auto_merge}' \
+	"$settings/repository.json" >"$repository_settings"
+
 # Classic branch protection on the default branch, left in $protection.
 # GitHub enforces it alongside the ruleset, not instead of it, so one that
 # still requires checks the workflows no longer report blocks every merge
@@ -127,7 +140,7 @@ protection_summary() {
 if [ "$mode" = --diff ]; then
 	# Command substitution drops trailing newlines, so print each part rather
 	# than concatenating them.
-	repository=$(drift "repos/$repo" "$settings/repository.json")
+	repository=$(drift "repos/$repo" "$repository_settings")
 	workflow=$(drift "repos/$repo/actions/permissions/workflow" "$workflow_settings")
 	classic=
 	if has_classic_protection; then
@@ -154,10 +167,10 @@ run() {
 	fi
 }
 
-visibility=$(gh api "repos/$repo" --jq .visibility)
 echo "$repo is $visibility"
 
-run gh api -X PATCH "repos/$repo" --silent --input "$settings/repository.json"
+run gh api -X PATCH "repos/$repo" --silent --input "$repository_settings"
+echo "auto-merge: $auto_merge (Dependabot's patch and minor bumps merge themselves only if so)"
 echo "runs release-please: $uses_release_please (Actions may open PRs only if so)"
 run gh api -X PUT "repos/$repo/actions/permissions/workflow" --silent \
 	--input "$workflow_settings"

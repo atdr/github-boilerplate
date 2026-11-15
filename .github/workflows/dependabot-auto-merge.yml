@@ -1,0 +1,51 @@
+# Reusable: auto-merge a Dependabot PR whose bump is a patch or a minor.
+#
+# It only switches GitHub's auto-merge on; the merge waits for every check the
+# ruleset requires, so a red bump never lands. Majors are left for review, and
+# so is everything in a repo with auto-merge off: configure.sh turns it on only
+# where the ruleset requires the gates, since auto-merge with nothing required
+# merges at once.
+#
+# Called from `pull_request_target`, which gives a Dependabot PR a token that
+# can write. Safe here because nothing from the PR is checked out or run: the
+# job reads the PR's metadata and nothing else.
+name: dependabot-auto-merge
+
+on:
+  workflow_call:
+
+permissions: {}
+
+jobs:
+  merge:
+    name: auto-merge patch and minor bumps
+    if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - id: metadata
+        uses: dependabot/fetch-metadata@v3
+      - name: Enable auto-merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          # The highest bump in the PR, so a group holding one major is a major.
+          UPDATE_TYPE: ${{ steps.metadata.outputs.update-type }}
+        run: |
+          case "$UPDATE_TYPE" in
+          version-update:semver-patch|version-update:semver-minor) ;;
+          *)
+            echo "::notice::left for review: ${UPDATE_TYPE:-no update type} is not a patch or minor bump"
+            exit 0
+            ;;
+          esac
+          allowed=$(gh api "repos/$REPO" --jq '.allow_auto_merge')
+          if [ "$allowed" = false ]; then
+            echo "::notice::left for review: auto-merge is off in this repo (configure.sh turns it on only where the ruleset requires the gates)"
+            exit 0
+          fi
+          gh pr merge --auto --squash "$PR_URL"
