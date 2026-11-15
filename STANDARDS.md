@@ -225,9 +225,11 @@ repository variable, because a job-level `if:` can read `vars` but not
   auto-merge for them, so each lands once every required check passes; majors
   wait for review. Every ecosystem has a three day cooldown first, so a
   compromised release can be pulled before it merges itself. Auto-merge is on
-  only where the ruleset requires the gates: with nothing required it merges at
-  once. A merge made this way is pushed by `GITHUB_TOKEN`, which starts no
-  `push` workflow, so CI on `main`, deploys and release-please next run on the
+  only where the ruleset requires at least one gate, and only for PRs into the
+  default branch, the one branch the ruleset covers: with nothing required it
+  merges at once. `configure.sh` switches it on after the ruleset is in place. A
+  merge made this way is pushed by `GITHUB_TOKEN`, which starts no `push`
+  workflow, so CI on `main`, deploys and release-please next run on the
   following push.
 - **Never group security updates** [dependabot-security-group]. In philipsair a
   security group filtered a high advisory out of its own job and still reported
@@ -248,7 +250,7 @@ workflow can open or approve a PR it was not built to.
 | Merge methods                       | Squash only                |
 | Squash commit title / message       | PR title / commit messages |
 | Delete branch on merge              | On                         |
-| Auto-merge                          | On (public repos)          |
+| Auto-merge                          | Where a gate is required   |
 | Default workflow token              | Read                       |
 | Actions may create PRs              | Only with release-please   |
 | Dependabot alerts, security updates | On                         |

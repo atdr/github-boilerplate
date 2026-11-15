@@ -19,7 +19,11 @@ permissions: {}
 jobs:
   merge:
     name: auto-merge patch and minor bumps
-    if: ${{ github.event.pull_request.user.login == 'dependabot[bot]' }}
+    # Only into the default branch: the ruleset that makes auto-merge wait for
+    # the gates covers that branch alone.
+    if: >-
+      ${{ github.event.pull_request.user.login == 'dependabot[bot]'
+      && github.event.pull_request.base.ref == github.event.repository.default_branch }}
     timeout-minutes: 5
     runs-on: ubuntu-latest
     permissions:
