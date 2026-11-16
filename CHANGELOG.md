@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.2.0](https://github.com/atdr/github-boilerplate/compare/v1.1.0...v1.2.0) (2026-11-16)
+
+
+### Features
+
+* **template:** link each publish deployment to its registry page ([#48](https://github.com/atdr/github-boilerplate/issues/48)) ([1736a5f](https://github.com/atdr/github-boilerplate/commit/1736a5ff9687d9d22c655115ca23fe2b37281228))
+
+
+### Bug Fixes
+
+* **apply:** guard the empty copied array under bash 3.2 ([#70](https://github.com/atdr/github-boilerplate/issues/70)) ([7f77f25](https://github.com/atdr/github-boilerplate/commit/7f77f25da90a0a9527181b3819010170bb1a0a13))
+* **auto-merge:** switch auto-merge off when a bump stops qualifying ([#69](https://github.com/atdr/github-boilerplate/issues/69)) ([8f84107](https://github.com/atdr/github-boilerplate/commit/8f841077334d4ac3a2c64105b19826cc82744cb5))
+* **configure:** reject arguments after the mode ([#66](https://github.com/atdr/github-boilerplate/issues/66)) ([7308b6d](https://github.com/atdr/github-boilerplate/commit/7308b6d92844afec375a7afcf033c2ff9228475f))
+* **template:** keep .env.example trackable outside Node ([#68](https://github.com/atdr/github-boilerplate/issues/68)) ([b026b9c](https://github.com/atdr/github-boilerplate/commit/b026b9cdd2e47219b85aa63a622ccb8bc6c4f335))
+* **template:** match pre-commit mdformat pins to the CI pins ([#67](https://github.com/atdr/github-boilerplate/issues/67)) ([41b226e](https://github.com/atdr/github-boilerplate/commit/41b226e2e5206eba8398636d551e947ec070e8e3))
+
 ## [1.1.0](https://github.com/atdr/github-boilerplate/compare/v1.0.0...v1.1.0) (2026-11-15)
 
 
