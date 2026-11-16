@@ -201,9 +201,11 @@ shows in the changelog. `config-conventional`'s own default allows `build`,
 ### Publishing
 
 OIDC trusted publishing to npm and PyPI. No stored tokens. Each publish job runs
-in an environment (`npm-release`, `pypi`) limited to `main`. Where a service has
-no OIDC (Cloudflare), the token is an environment secret limited to `main`, and
-the deploy job cannot write to the repo. An optional deploy is switched on by a
+in an environment (`npm-release`, `pypi`) limited to `main`, and sets the
+environment's `url` to the version it published, so each deployment on the
+environment's page links to its release on the registry. Where a service has no
+OIDC (Cloudflare), the token is an environment secret limited to `main`, and the
+deploy job cannot write to the repo. An optional deploy is switched on by a
 repository variable, because a job-level `if:` can read `vars` but not
 `secrets`.
 
