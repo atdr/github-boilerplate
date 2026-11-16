@@ -26,10 +26,12 @@ usage() {
 	exit 2
 }
 
-[ $# -ge 1 ] || usage
+# At most one option: --apply --diff together would silently drop --diff and
+# change a live repo where a comparison was meant. An empty mode is not a mode.
+[ $# -ge 1 ] && [ $# -le 2 ] || usage
 repo=$1
 mode=${2:-}
-[ -z "$mode" ] || [ "$mode" = --apply ] || [ "$mode" = --diff ] || usage
+[ $# -eq 1 ] || [ "$mode" = --apply ] || [ "$mode" = --diff ] || usage
 
 here=$(cd "$(dirname "$0")/.." && pwd)
 settings=$here/settings
