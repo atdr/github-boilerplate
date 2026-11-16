@@ -230,7 +230,22 @@ repository variable, because a job-level `if:` can read `vars` but not
   merges at once. `configure.sh` switches it on after the ruleset is in place. A
   merge made this way is pushed by `GITHUB_TOKEN`, which starts no `push`
   workflow, so CI on `main`, deploys and release-please next run on the
-  following push.
+  following push. CodeQL's default setup is not a workflow and still scans
+  `main` within minutes of the merge.
+- **CodeQL is not a gate.** Default setup analyzes some Dependabot PRs and skips
+  others, reporting a neutral "configurations not found" with no analysis, and a
+  ruleset that requires code scanning results blocks a merge whose results never
+  arrive. A dependency bump changes manifests and lock files, not the source
+  CodeQL reads. Dependabot alerts and the cooldown cover it, plus, in Node
+  repos, `node-ci`'s `npm audit`, which blocks `ci gate` on a production
+  advisory. Python CI has no audit yet (see the table below), so there the
+  alerts and the cooldown are all of it. Any CodeQL alert still surfaces from
+  the scan of `main`.
+- **Adding auto-merge to a repo: settings first.** Run `configure.sh --apply`
+  before merging the PR that adds `auto-merge.yml`. That merge changes
+  `dependabot.yml`'s pins, Dependabot opens PRs within seconds, and a job that
+  finds the repo setting still off leaves its PR for review, with nothing to run
+  it again. The setting does nothing until the workflow asks for it.
 - **Never group security updates** [dependabot-security-group]. In philipsair a
   security group filtered a high advisory out of its own job and still reported
   success, so the alert sat open with nothing to show for it.
