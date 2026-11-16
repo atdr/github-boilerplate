@@ -225,8 +225,9 @@ repository variable, because a job-level `if:` can read `vars` but not
   ungrouped, one reviewable PR each.
 - **Patch and minor bumps auto-merge.** `auto-merge.yml` switches on GitHub's
   auto-merge for them, so each lands once every required check passes; majors
-  wait for review. Every ecosystem has a three day cooldown first, so a
-  compromised release can be pulled before it merges itself. Auto-merge is on
+  wait for review, and a grouped PR that gains a major after auto-merge was on
+  has it switched off again. Every ecosystem has a three day cooldown first, so
+  a compromised release can be pulled before it merges itself. Auto-merge is on
   only where the ruleset requires at least one gate, and only for PRs into the
   default branch, the one branch the ruleset covers: with nothing required it
   merges at once. `configure.sh` switches it on after the ruleset is in place. A
