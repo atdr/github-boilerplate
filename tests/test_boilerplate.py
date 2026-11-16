@@ -27,20 +27,25 @@ checker = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(checker)
 
 
+def apply_command(*args: str, root: Path = ROOT) -> list[str]:
+    """apply.sh with its arguments, run by $APPLY_BASH when set. CI sets it
+    to macOS's /bin/bash, the 3.2 the script is written for, since the
+    shebang finds whatever newer bash is first on PATH."""
+    command = [str(root / "scripts" / "apply.sh"), *args]
+    shell = os.environ.get("APPLY_BASH")
+    return [shell, *command] if shell else command
+
+
 def apply(overlay: str, target: Path) -> Path:
     target.mkdir(parents=True, exist_ok=True)
-    subprocess.run(
-        [str(ROOT / "scripts" / "apply.sh"), overlay, str(target)],
-        check=True,
-        capture_output=True,
-    )
+    subprocess.run(apply_command(overlay, str(target)), check=True, capture_output=True)
     return target
 
 
 
 def diff(overlay: str, target: Path) -> subprocess.CompletedProcess:
     return subprocess.run(
-        [str(ROOT / "scripts" / "apply.sh"), overlay, str(target), "--diff"],
+        apply_command(overlay, str(target), "--diff"),
         capture_output=True,
         text=True,
     )
@@ -69,7 +74,7 @@ def test_apply_rejects_more_than_one_option(tmp_path):
     repo = apply("core", tmp_path / "repo")
     (repo / "SECURITY.md").write_text("edited\n")
     result = subprocess.run(
-        [str(ROOT / "scripts" / "apply.sh"), "core", str(repo), "--force", "--diff"],
+        apply_command("core", str(repo), "--force", "--diff"),
         capture_output=True,
         text=True,
     )
@@ -109,6 +114,16 @@ def test_applied_markdown_is_formatted(overlay, tmp_path):
 
 def test_this_repo_meets_its_own_conventions():
     assert checker.run(ROOT) == []
+
+
+@pytest.mark.parametrize("overlay", OVERLAYS)
+def test_apply_reruns_cleanly(overlay, tmp_path):
+    # A rerun copies nothing, which bash 3.2 once failed on (an empty array
+    # is unbound there under set -u).
+    apply(overlay, tmp_path)
+    result = subprocess.run(apply_command(overlay, str(tmp_path)), capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert "copied: 0 file(s)" in result.stdout
 
 
 def test_apply_leaves_existing_files_alone(tmp_path):
@@ -349,7 +364,7 @@ def test_apply_pins_and_strips_markers_after_a_release(tmp_path):
     target = tmp_path / "repo"
     target.mkdir()
     subprocess.run(
-        [str(copy / "scripts" / "apply.sh"), "node", str(target)],
+        apply_command("node", str(target), root=copy),
         check=True,
         capture_output=True,
     )

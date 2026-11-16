@@ -140,8 +140,9 @@ while IFS="$(printf '\t')" read -r rel src; do
 done <<<"$winners"
 
 # The core README's CI and coverage badges point at ci.yml, which only the
-# language overlays ship. Drop them from a README this run wrote.
-if [ ! -f "$target/.github/workflows/ci.yml" ]; then
+# language overlays ship. Drop them from a README this run wrote. Bash 3.2
+# treats an empty array as unbound under set -u, hence the count check.
+if [ ${#copied[@]} -gt 0 ] && [ ! -f "$target/.github/workflows/ci.yml" ]; then
 	for rel in "${copied[@]}"; do
 		if [ "$rel" = README.md ]; then
 			sed -e '/^\[!\[CI\]/d' -e '/^\[!\[Coverage\]/d' "$target/README.md" >"$target/README.md.tmp"

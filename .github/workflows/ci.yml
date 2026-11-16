@@ -60,6 +60,31 @@ jobs:
           -r scripts/requirements-markdown.txt
       - run: pytest -q
 
+  # The scripts are written for bash 3.2, macOS's /bin/bash, which treats an
+  # empty array as unbound under set -u. Ubuntu's bash 5 never sees that, and
+  # the shebang would find Homebrew's newer bash on macOS too, so the tests
+  # run apply.sh through $APPLY_BASH.
+  test-bash32:
+    name: pytest (bash 3.2)
+    timeout-minutes: 15
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.13"
+      - name: Confirm /bin/bash is 3.2
+        run: /bin/bash -c '[[ $BASH_VERSION == 3.2.* ]] || { echo "::error::/bin/bash is $BASH_VERSION"; exit 1; }'
+      - run: >-
+          pip install -r requirements-dev.txt
+          -r scripts/requirements-conventions.txt
+          -r scripts/requirements-markdown.txt
+      - run: pytest -q
+        env:
+          APPLY_BASH: /bin/bash
+
   # Node repos run Prettier over everything it understands, YAML included, with
   # the overlay's own .prettierrc.json. A template file Prettier would rewrite
   # fails `format:check` in every repo that applies it.
@@ -87,7 +112,7 @@ jobs:
     # Not always(): a run superseded by a newer one is cancelled, and its gate
     # would report a failure on the same commit the newer run is checking.
     if: ${{ !cancelled() }}
-    needs: [actionlint, shellcheck, test, prettier]
+    needs: [actionlint, shellcheck, test, test-bash32, prettier]
     timeout-minutes: 5
     runs-on: ubuntu-latest
     steps:
