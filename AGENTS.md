@@ -70,5 +70,6 @@ scripts/configure.sh <owner/repo> [--apply|--diff]   # dry run by default
 - A gate's required check name is its job `name:`, and must be unique across all
   workflows in a repo, hence `ci gate`, `checks gate`, `pull-request gate`.
 - `.mdformat.toml`'s `exclude` needs Python 3.13 or later.
-- Before the first release the manifest says `0.0.0`, and `apply.sh` pins
-  callers to `@main` with a warning.
+- `apply.sh` still falls back to pinning callers to `@main`, with a warning,
+  when the manifest says `0.0.0`. That only happens in a fork or fresh copy
+  before its first release.
