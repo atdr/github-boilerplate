@@ -6,6 +6,11 @@
 # where the ruleset requires the gates, since auto-merge with nothing required
 # merges at once.
 #
+# Dependabot updates a grouped PR in place, so a PR that opened as a minor can
+# later gain a major. Every run therefore ends with auto-merge matching the
+# bump: a PR left for review has auto-merge switched off, whatever an earlier
+# run did.
+#
 # Called from `pull_request_target`, which gives a Dependabot PR a token that
 # can write. Safe here because nothing from the PR is checked out or run: the
 # job reads the PR's metadata and nothing else.
@@ -32,7 +37,7 @@ jobs:
     steps:
       - id: metadata
         uses: dependabot/fetch-metadata@v3
-      - name: Enable auto-merge
+      - name: Set auto-merge to match the bump
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -43,11 +48,15 @@ jobs:
           case "$UPDATE_TYPE" in
           version-update:semver-patch|version-update:semver-minor) ;;
           *)
+            # An earlier run may have switched auto-merge on for this PR. With
+            # it already off, this exits 0 and changes nothing.
+            gh pr merge --disable-auto "$PR_URL"
             echo "::notice::left for review: ${UPDATE_TYPE:-no update type} is not a patch or minor bump"
             exit 0
             ;;
           esac
           allowed=$(gh api "repos/$REPO" --jq '.allow_auto_merge')
+          # No disable here: with the setting off, auto-merge cannot be on.
           if [ "$allowed" = false ]; then
             echo "::notice::left for review: auto-merge is off in this repo (configure.sh turns it on only where the ruleset requires the gates)"
             exit 0
