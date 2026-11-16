@@ -25,9 +25,9 @@ jobs:
       # extra-files in release-please-config.json), so a repo built from a
       # release always pins that release.
       #
-      # No moving major tag while pre-1.0: a breaking change bumps the minor,
-      # so a `v0` tag would carry breaking changes to every caller. Callers pin
-      # exact tags and Dependabot proposes each bump.
+      # No moving major tag: it would carry an unreviewed change to every
+      # caller at once. Callers pin exact tags and Dependabot proposes each
+      # bump (STANDARDS.md, Pinning).
       - uses: googleapis/release-please-action@v5
         with:
           config-file: release-please-config.json

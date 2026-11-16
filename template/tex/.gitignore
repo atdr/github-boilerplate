@@ -292,6 +292,7 @@ main.pdf
 # Secrets
 .env
 .env.*
+!.env.example
 *.pem
 *.key
 
