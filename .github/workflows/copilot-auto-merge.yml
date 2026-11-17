@@ -111,23 +111,25 @@ jobs:
             if gh pr merge --squash --match-head-commit "$head_sha" \
               --repo "$REPO" "$number"; then
               echo "::notice::#$number: merged $head_sha, which $copilot approved"
-              # A dispatch runs on the branch tip, so a merge landing in
-              # between leaves this commit without a run of its own. Said
-              # loudly rather than threading a revision through every
-              # reusable workflow; the tip's runs still cover the result.
-              merged=$(gh pr view "$number" --repo "$REPO" --json mergeCommit \
-                --jq .mergeCommit.oid || true)
-              tip=$(gh api "repos/$REPO/commits/$default_branch" --jq .sha || true)
-              if [ -z "$merged" ] || [ "$merged" != "$tip" ]; then
-                echo "::warning::#$number: $default_branch moved past its merge commit ${merged:-(unknown)}, so ci and checks run on ${tip:-the tip} instead"
-                failed=1
-              fi
               for workflow in ci.yml checks.yml; do
                 if ! gh workflow run "$workflow" --ref "$default_branch" --repo "$REPO"; then
                   echo "::warning::#$number: merged, but could not start $workflow on $default_branch"
                   failed=1
                 fi
               done
+              # A dispatch runs on the branch tip at that moment, so a merge
+              # landing before either one leaves this commit without that run.
+              # Checked after both: the tip only moves forward, so a tip still
+              # at the merge commit means both ran on it. Said loudly rather
+              # than threading a revision through every reusable workflow; the
+              # tip's runs still cover the combined result.
+              merged=$(gh pr view "$number" --repo "$REPO" --json mergeCommit \
+                --jq .mergeCommit.oid || true)
+              tip=$(gh api "repos/$REPO/commits/$default_branch" --jq .sha || true)
+              if [ -z "$merged" ] || [ "$merged" != "$tip" ]; then
+                echo "::warning::#$number: $default_branch moved past its merge commit ${merged:-(unknown)} before its ci and checks runs started, so they may test ${tip:-a later commit} instead"
+                failed=1
+              fi
             else
               echo "::warning::#$number: could not merge $head_sha"
               failed=1

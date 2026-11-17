@@ -284,8 +284,9 @@ every push to it.
 - **CI on `main` still runs.** A merge made with `GITHUB_TOKEN` starts no `push`
   workflow, so after each merge the sweep dispatches `ci` and `checks` on the
   default branch, which that token may do. A dispatch runs on the branch tip, so
-  if another merge lands first the sweep fails with a warning naming the commit
-  left without runs of its own; the tip's runs still cover the combined result.
+  if another merge lands before either dispatch the sweep fails with a warning
+  naming the commit left without runs of its own; the tip's runs still cover the
+  combined result.
 - **Risk accepted.** A change can be written by an agent, approved by Copilot
   and merged with no human reading it. The release PR is then the only
   checkpoint before the change reaches caller repos. On its first five PRs here

@@ -81,6 +81,10 @@ if [ "$1" = pr ] && [ "$2" = view ]; then
 	if [ -f "$FAKE/state-$n" ]; then cat "$FAKE/state-$n"; else echo CLEAN; fi
 	exit 0
 fi
+# Another merge landing between the two dispatches, when a test asks for one.
+if [ "$1 $2 $3" = "workflow run ci.yml" ] && [ -f "$FAKE/advance-on-ci" ]; then
+	echo dddddddddddddddddddddddddddddddddddddddd >"$FAKE/tip"
+fi
 if [ "$1" = api ]; then
 	for arg in "$@"; do
 		case "$arg" in
@@ -153,21 +157,29 @@ def test_each_merge_starts_ci_and_checks_on_the_default_branch(tmp_path):
     calls = (tmp_path / "calls").read_text().splitlines()
     assert calls[-5:] == [
         merge(1),
-        f"pr view 1 --repo {REPO} --json mergeCommit --jq .mergeCommit.oid",
-        f"api repos/{REPO}/commits/main --jq .sha",
         f"workflow run ci.yml --ref main --repo {REPO}",
         f"workflow run checks.yml --ref main --repo {REPO}",
+        f"pr view 1 --repo {REPO} --json mergeCommit --jq .mergeCommit.oid",
+        f"api repos/{REPO}/commits/main --jq .sha",
     ]
     assert "::warning" not in result.stdout
 
 
-def test_a_merge_overtaken_before_its_dispatch_is_reported(tmp_path):
-    # The dispatched runs test the newer tip, so this commit has none of its own.
-    (tmp_path / "tip").write_text("d" * 40 + "\n")
+@pytest.mark.parametrize("when", ["before both dispatches", "between the dispatches"])
+def test_a_merge_overtaken_before_its_dispatches_is_reported(tmp_path, when):
+    # A dispatched run tests the tip at that moment, so this commit would lack
+    # one or both runs of its own.
+    if when == "before both dispatches":
+        (tmp_path / "tip").write_text("d" * 40 + "\n")
+    else:
+        (tmp_path / "advance-on-ci").touch()
     result, merges = sweep(tmp_path, [pr(1)], {1: [f"APPROVED {HEAD}"]})
     assert result.returncode == 1
     assert merges == [merge(1)]
     assert f"#1: main moved past its merge commit {'c' * 40}" in result.stdout
+
+
+def test_ci_and_checks_accept_a_dispatch():
     for name in ("ci", "checks"):
         on = yaml.safe_load((ROOT / f".github/workflows/{name}.yml").read_text())
         on = on.get("on", on.get(True))
