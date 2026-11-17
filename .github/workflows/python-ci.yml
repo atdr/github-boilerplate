@@ -191,11 +191,15 @@ jobs:
   # Runtime means [project].dependencies, without extras or dependency groups:
   # what `pip install <package>` gives a user. The development tree is
   # everything the repo can install. With a uv.lock both come from the lock
-  # (`uv export`), hashed, so pip-audit checks the pinned versions as they are
-  # without resolving anything. Without one, each is installed into a venv of
+  # (`uv export`), hashed, and scripts/audit-requirements.py turns each export
+  # into pip-audit's input: hashes kept, so pip-audit checks the pinned versions
+  # as they are without resolving anything, and direct URL requirements (Git
+  # dependencies, say) dropped with a notice, since they have no version to
+  # look up and no hashes. Without a lock, each tree is installed into a venv of
   # its own (`pip install -e .` and the `install` input) and pip-audit reads
   # what landed there; pip itself is uninstalled first, being the installer
-  # rather than a dependency.
+  # rather than a dependency. Either way, each line of
+  # $RUNNER_TEMP/audit/<tree>.args holds the arguments of one pip-audit run.
   audit:
     name: dependency audit
     if: inputs.audit
@@ -219,16 +223,18 @@ jobs:
         with:
           python-version: ${{ inputs.python-version }}
       # The pip-audit pin lives in this repository, where Dependabot bumps it,
-      # so it is fetched at the commit the caller pinned.
-      - name: Fetch the pinned pip-audit requirements
+      # so it is fetched at the commit the caller pinned, and so is the script
+      # that prepares a uv export for it.
+      - name: Fetch the pinned pip-audit requirements and script
         env:
           # job.workflow_sha is this workflow's own commit (the one the caller's
           # @ref resolved to), not the caller's.
           REF: ${{ job.workflow_sha }}
         run: |
-          curl --fail --silent --show-error --retry 3 \
-            -o "$RUNNER_TEMP/requirements-audit.txt" \
-            "https://raw.githubusercontent.com/atdr/github-boilerplate/$REF/scripts/requirements-audit.txt"
+          for file in requirements-audit.txt audit-requirements.py; do
+            curl --fail --silent --show-error --retry 3 -o "$RUNNER_TEMP/$file" \
+              "https://raw.githubusercontent.com/atdr/github-boilerplate/$REF/scripts/$file"
+          done
       # Into the runner's interpreter, never into what is audited below.
       - run: pip install -r "$RUNNER_TEMP/requirements-audit.txt"
       - name: Resolve runtime and development dependencies
@@ -242,17 +248,18 @@ jobs:
             # --no-emit-local leaves out the project and any path dependency,
             # which are not on PyPI to audit.
             uv export --locked --quiet --format requirements-txt --no-emit-local \
-              --no-default-groups -o "$out/runtime.txt"
+              --no-default-groups -o "$out/export-runtime.txt"
             uv export --locked --quiet --format requirements-txt --no-emit-local \
-              --all-extras --all-groups -o "$out/development.txt"
+              --all-extras --all-groups -o "$out/export-development.txt"
             for tree in runtime development; do
+              python -I "$RUNNER_TEMP/audit-requirements.py" "$out/$tree" "$out/export-$tree.txt"
+              # One pip-audit run per file it wrote, none if it wrote none:
               # pip-audit refuses a requirements file with nothing in it.
-              if grep -q '^[^#[:space:]]' "$out/$tree.txt"; then
-                args="--disable-pip -r $out/$tree.txt"
-              else
-                args=""
-              fi
-              echo "$(echo "$tree" | tr '[:lower:]' '[:upper:]')_ARGS=$args" >> "$GITHUB_ENV"
+              for file in "$out/$tree"-*.txt; do
+                if [ -f "$file" ]; then
+                  echo "--disable-pip -r $file"
+                fi
+              done > "$out/$tree.args"
             done
           elif [ -f pyproject.toml ] || [ -f setup.py ]; then
             python -m venv "$out/runtime"
@@ -265,7 +272,7 @@ jobs:
             for tree in runtime development; do
               "$out/$tree/bin/python" -m pip uninstall --quiet --yes pip
               site=$("$out/$tree/bin/python" -c 'import sysconfig; print(sysconfig.get_path("purelib"))')
-              echo "$(echo "$tree" | tr '[:lower:]' '[:upper:]')_ARGS=--skip-editable --path $site" >> "$GITHUB_ENV"
+              echo "--skip-editable --path $site" > "$out/$tree.args"
             done
           else
             echo "::error title=Nothing to audit::No uv.lock, pyproject.toml or setup.py, so there are no dependencies to audit. Set \`audit: false\` if this repo has none."
@@ -275,13 +282,18 @@ jobs:
       # has no severity threshold, so any known advisory fails.
       - name: audit runtime dependencies
         run: |
-          if [ -z "$RUNTIME_ARGS" ]; then
+          if [ ! -s "$RUNNER_TEMP/audit/runtime.args" ]; then
             echo "No runtime dependencies to audit."
             exit 0
           fi
-          # Unquoted on purpose: it is a list of arguments.
-          # shellcheck disable=SC2086
-          pip-audit --progress-spinner off $RUNTIME_ARGS
+          status=0
+          set -f
+          while read -r args <&3; do
+            # Unquoted on purpose: it is a list of arguments.
+            # shellcheck disable=SC2086
+            pip-audit --progress-spinner off $args || status=1
+          done 3< "$RUNNER_TEMP/audit/runtime.args"
+          exit "$status"
       # Advisory: development tooling never ships. The step swallows the exit
       # code itself rather than using continue-on-error, which would leave the
       # runner's bare "Process completed with exit code 1" as the only
@@ -289,12 +301,17 @@ jobs:
       # with the deprecation notices; a Dependabot bump clears it.
       - name: audit development tree (advisory)
         run: |
-          if [ -z "$DEVELOPMENT_ARGS" ]; then
+          if [ ! -s "$RUNNER_TEMP/audit/development.args" ]; then
             echo "No development dependencies to audit."
             exit 0
           fi
-          # Unquoted on purpose: it is a list of arguments.
-          # shellcheck disable=SC2086
-          if ! pip-audit --progress-spinner off $DEVELOPMENT_ARGS; then
+          status=0
+          set -f
+          while read -r args <&3; do
+            # Unquoted on purpose: it is a list of arguments.
+            # shellcheck disable=SC2086
+            pip-audit --progress-spinner off $args || status=1
+          done 3< "$RUNNER_TEMP/audit/development.args"
+          if [ "$status" != 0 ]; then
             echo "::error title=Development dependency advisory::pip-audit found an advisory in the development tree. This does not block: development dependencies never reach a user, and the job is green on purpose. Dependabot alerts are the signal of record; the report above says which package."
           fi

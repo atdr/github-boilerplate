@@ -656,11 +656,17 @@ def test_python_ci_audits_in_its_own_job_like_node_ci():
 
 
 def test_python_ci_blocks_on_runtime_and_reports_development_advisories():
+    # Each tree is one pip-audit run per line of its args file; any failed run
+    # fails the runtime step, and only annotates the development one.
     runtime = python_ci_audit_step("audit runtime dependencies")
-    assert "pip-audit" in runtime and "$RUNTIME_ARGS" in runtime
-    assert "if !" not in runtime and "|| true" not in runtime
+    assert 'done 3< "$RUNNER_TEMP/audit/runtime.args"' in runtime
+    assert "pip-audit --progress-spinner off $args || status=1" in runtime
+    assert runtime.rstrip().endswith('exit "$status"')
+    assert "|| true" not in runtime
     development = python_ci_audit_step("audit development tree (advisory)")
-    assert "if ! pip-audit" in development and "$DEVELOPMENT_ARGS" in development
+    assert 'done 3< "$RUNNER_TEMP/audit/development.args"' in development
+    assert "pip-audit --progress-spinner off $args || status=1" in development
+    assert "exit" not in development.split("done 3<")[1]
     assert "::error title=Development dependency advisory::" in development
     job = yaml.safe_load((ROOT / ".github/workflows/python-ci.yml").read_text())["jobs"]["audit"]
     assert not any(s.get("continue-on-error") for s in job["steps"])
@@ -676,12 +682,25 @@ def test_python_ci_audit_resolves_runtime_without_extras_or_groups():
     assert "exit 1" in resolve
 
 
+def test_python_ci_audit_prepares_uv_exports_with_the_fetched_script():
+    # Hashed, so pip-audit resolves nothing, after the script has dropped what
+    # it cannot audit; one run per file the script wrote.
+    resolve = python_ci_audit_step("Resolve runtime and development dependencies")
+    assert 'python -I "$RUNNER_TEMP/audit-requirements.py"' in resolve
+    assert 'echo "--disable-pip -r $file"' in resolve
+    assert "--no-deps" not in resolve and "--no-hashes" not in resolve
+    fetch = python_ci_audit_step("Fetch the pinned pip-audit requirements and script")
+    assert "audit-requirements.py" in fetch and "$REF/scripts/$file" in fetch
+    assert (ROOT / "scripts/audit-requirements.py").is_file()
+
+
 def test_python_ci_audit_installs_the_pinned_pip_audit():
     pins = (ROOT / "scripts/requirements-audit.txt").read_text()
     assert re.search(r"^pip-audit==\S+$", pins, re.M)
+    fetch = python_ci_audit_step("Fetch the pinned pip-audit requirements and script")
+    assert "for file in requirements-audit.txt " in fetch and "$REF/scripts/$file" in fetch
     text = (ROOT / ".github/workflows/python-ci.yml").read_text()
     assert "REF: ${{ job.workflow_sha }}" in text
-    assert "$REF/scripts/requirements-audit.txt" in text
     # Dependabot's /scripts entry is what keeps the pin current.
     config = yaml.safe_load((ROOT / ".github/dependabot.yml").read_text())
     assert any(
