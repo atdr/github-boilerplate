@@ -185,7 +185,7 @@ shows in the changelog. `config-conventional`'s own default allows `build`,
 
 ### release-please
 
-- Runs on push to `main`. Inline `release-type` until the repo needs a
+- Runs on push to `main` and daily. Inline `release-type` until the repo needs a
   `release-please-config.json` (extra-files, pre-1.0 bump rules, several
   packages) [release-please: the config and manifest come as a pair].
 - Publishing is a later job in the same workflow, gated on `release_created`. A
@@ -232,9 +232,11 @@ repository variable, because a job-level `if:` can read `vars` but not
   default branch, the one branch the ruleset covers: with nothing required it
   merges at once. `configure.sh` switches it on after the ruleset is in place. A
   merge made this way is pushed by `GITHUB_TOKEN`, which starts no `push`
-  workflow, so CI on `main`, deploys and release-please next run on the
-  following push. CodeQL's default setup is not a workflow and still scans
-  `main` within minutes of the merge.
+  workflow, so CI on `main` and deploys next run on the following push.
+  release-please also runs daily, so its release PR opens within a day of the
+  bump. GitHub disables scheduled workflows in a public repo with no activity
+  for 60 days. CodeQL's default setup is not a workflow and still scans `main`
+  within minutes of the merge.
 - **CodeQL is not a gate.** Default setup analyzes some Dependabot PRs and skips
   others, reporting a neutral "configurations not found" with no analysis, and a
   ruleset that requires code scanning results blocks a merge whose results never
