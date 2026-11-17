@@ -214,6 +214,12 @@ lint = ["ruff"]
     )
     member(tmp_path, "packages/b", '[project]\nname = "ws-b"\n\n[dependency-groups]\ndocs = ["jinja2"]\n')
     member(tmp_path, "packages/skip", '[project]\nname = "ws-skip"\n\n[dependency-groups]\nx = ["certifi"]\n')
+    # Matched by the glob, but uv leaves it out of the workspace and the lock.
+    member(
+        tmp_path,
+        "packages/unmanaged",
+        '[project]\nname = "ws-c"\n\n[dependency-groups]\nx = ["idna"]\n\n[tool.uv]\nmanaged = false\n',
+    )
     (tmp_path / "packages/notes").mkdir()
     assert selections(tmp_path, root_pyproject) == [
         "--group lint",

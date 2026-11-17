@@ -163,7 +163,7 @@ def members(root: Path, workspace: dict) -> list[tuple[str, dict]]:
     """Each workspace member's project name and pyproject, in glob order.
 
     A member is a directory matching a `members` glob but no `exclude` glob,
-    with a pyproject.toml that names a project.
+    with a pyproject.toml that names a project uv manages.
     """
     excluded = {
         path.resolve() for pattern in workspace.get("exclude", []) for path in matches(root, pattern)
@@ -176,6 +176,10 @@ def members(root: Path, workspace: dict) -> list[tuple[str, dict]]:
                 continue
             data = tomllib.loads(pyproject.read_text())
             name = data.get("project", {}).get("name")
+            # uv leaves a `managed = false` project out of the workspace and
+            # its lock, so there is nothing of it to export.
+            if data.get("tool", {}).get("uv", {}).get("managed") is False:
+                continue
             if name:
                 found.append((name, data))
     return found
