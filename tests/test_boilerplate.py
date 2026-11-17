@@ -307,10 +307,11 @@ def test_codecov_ships_only_with_the_overlays_that_report_coverage():
     assert node.read_text() == python.read_text()
 
 
-def ruleset(*gates: str, admin_bypass: bool = False) -> dict:
+def ruleset(*gates: str, admin_bypass: bool = False, copilot_review: bool = False) -> dict:
     result = subprocess.run(
         ["jq", "--arg", "gates", "".join(f"{g}\n" for g in gates),
          "--arg", "admin_bypass", str(admin_bypass).lower(),
+         "--arg", "copilot_review", str(copilot_review).lower(),
          "-f", str(ROOT / "scripts/ruleset.jq"), str(ROOT / "settings/ruleset-main.json")],
         check=True, capture_output=True, text=True,
     )
@@ -347,6 +348,21 @@ def test_ruleset_binds_admins_unless_the_repo_opts_out():
     ]
     # The bypass is for the admin alone: everything else still applies.
     assert required_checks(ruleset("checks gate", admin_bypass=True)) == ["checks gate"]
+
+
+@pytest.mark.parametrize("gates", [("checks gate",), ()])
+def test_ruleset_requests_a_copilot_review_on_every_push(gates):
+    # A fresh review per push: copilot-auto-merge.yml acts only on an approval
+    # of the PR's current head.
+    rules = ruleset(*gates, copilot_review=True)["rules"]
+    (rule,) = [r for r in rules if r["type"] == "copilot_code_review"]
+    assert rule["parameters"] == {"review_on_push": True, "review_draft_pull_requests": False}
+
+
+@pytest.mark.parametrize("gates", [("checks gate",), ()])
+def test_ruleset_has_no_copilot_review_without_the_pilot(gates):
+    # Elsewhere the rule would spend Copilot credits on reviews nothing uses.
+    assert not [r for r in ruleset(*gates)["rules"] if r["type"] == "copilot_code_review"]
 
 
 def test_template_claude_md_is_a_symlink():

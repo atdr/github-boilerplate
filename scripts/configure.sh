@@ -252,7 +252,18 @@ if [ "$visibility" = public ]; then
 	run gh api -X PATCH "repos/$repo/code-scanning/default-setup" --silent \
 		-f state=configured
 
+	# The Copilot review rule only where the Copilot auto-merge pilot runs
+	# (scripts/ruleset.jq).
+	copilot_review=false
+	case "
+$workflows
+" in
+	*"
+.github/workflows/copilot-auto-merge.yml
+"*) copilot_review=true ;;
+	esac
 	ruleset=$(jq -c --arg gates "$gates" --arg admin_bypass "$admin_bypass" \
+		--arg copilot_review "$copilot_review" \
 		-f "$here/scripts/ruleset.jq" "$settings/ruleset-main.json")
 	if [ -n "$gates" ]; then
 		echo "requires: $(printf '%s' "$gates" | paste -sd, - | sed 's/,/, /g')"
@@ -264,6 +275,9 @@ if [ "$visibility" = public ]; then
 	done
 	if [ "$admin_bypass" = true ]; then
 		echo "admins may bypass the ruleset: the repo commits .github/admin-bypass"
+	fi
+	if [ "$copilot_review" = true ]; then
+		echo "requests a Copilot review on every push: the repo has copilot-auto-merge.yml"
 	fi
 	existing=$(gh api "repos/$repo/rulesets" --jq '.[] | select(.name == "main") | .id')
 	if [ -n "$existing" ]; then

@@ -28,7 +28,8 @@ scripts/configure.sh <owner/repo> [--apply|--diff]   # dry run by default
   `conventions`, `dependabot-auto-merge`) run in callers' repos. **This repo's
   own** (`ci`, `checks`, `pull-request`, `auto-merge`, `release-please`) call
   the reusable ones locally (`uses: ./...`), so a change is exercised here
-  before any caller can pin it.
+  before any caller can pin it. `copilot-auto-merge` is a pilot for this repo
+  alone and calls nothing (STANDARDS.md, Copilot auto-merge).
 - `template/core` is copied into every repo, then `template/<overlay>` on top;
   an overlay file replaces the core file at the same path.
 - `scripts/check-conventions.py` enforces the checkable rules in `STANDARDS.md`.

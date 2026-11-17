@@ -1,0 +1,140 @@
+# Pilot, this repo only: an owner PR that Copilot approved merges once every
+# gate the ruleset requires passes (STANDARDS.md, Copilot auto-merge).
+#
+# It merges only the exact commit Copilot's latest review approved, and only
+# while that commit is still the PR's head. Never a fork, Dependabot
+# (auto-merge.yml handles those) or release-please: the release PR stays a
+# human checkpoint before any caller picks a change up.
+#
+# It merges directly rather than switching GitHub's auto-merge on. Auto-merge
+# stays on across pushes, so a push Copilot never saw could merge if its checks
+# passed before anything switched it off. `gh pr merge --match-head-commit`
+# makes GitHub refuse the merge once the head is not the approved commit, and
+# the ruleset refuses it until that commit's gates pass, so there is no window.
+#
+# Triggers. Not `pull_request_review`: GitHub holds a run started by Copilot's
+# review for manual approval before any job is read (action_required with no
+# jobs, later failure), reportedly starts none for an approval without inline
+# comments, and runs the PR's own copy of this file with a write token, so a
+# PR could rewrite its own guards. Instead a scheduled sweep runs the copy on
+# the default branch, so a PR never runs its own version. No
+# `workflow_dispatch` either: a manual run can pick a PR branch's copy.
+#
+# A merge made with GITHUB_TOKEN starts no `push` workflow, so after each merge
+# the sweep starts ci and checks on the default branch itself: a dispatch is one
+# of the events that token may start.
+#
+# Nothing from a PR is checked out or run: the job reads PR metadata through
+# the API and calls `gh pr merge`, and nothing else.
+name: copilot-auto-merge
+
+on:
+  schedule:
+    # Every 10 minutes: GitHub's schedule is best effort, so a run can lag.
+    - cron: "*/10 * * * *"
+
+permissions: {}
+
+# One sweep at a time; a queued one does the same thing, so none is cancelled.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    name: merge owner PRs that Copilot approved
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write # starting ci and checks on the merge
+      contents: write # the squash merge
+      pull-requests: write # merging a pull request
+    steps:
+      - name: Merge what Copilot's latest review approved
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          copilot='copilot-pull-request-reviewer[bot]'
+          failed=0
+          # Read from the API: a schedule event's payload has no repository.
+          default_branch=$(gh api "repos/$REPO" --jq .default_branch)
+          [ -n "$default_branch" ] || exit 1
+          # Empty fields print as "-": a tab is whitespace to `read`, so an
+          # empty field would shift the ones after it.
+          # Into the default branch only: the ruleset that makes a merge wait
+          # for the gates covers that branch alone.
+          prs=$(gh api --paginate \
+            "repos/$REPO/pulls?state=open&base=$default_branch&per_page=100" \
+            --jq '.[] | [.number, .user.login, (.head.repo.full_name // "-"),
+              .head.ref, .head.sha, .draft,
+              (.auto_merge.enabled_by.login // "-")] | @tsv')
+          while IFS=$'\t' read -r number author head_repo head_ref head_sha draft enabled_by <&3; do
+            [ -n "$number" ] || continue
+            # The owner's PRs from a branch in this repo, never a fork.
+            if [ "$author" != "$OWNER" ] || [ "$head_repo" != "$REPO" ]; then
+              continue
+            fi
+            case "$author" in dependabot\[bot\] | github-actions\[bot\]) continue ;; esac
+            case "$head_ref" in dependabot/* | release-please--*) continue ;; esac
+            # A draft is how the owner holds a PR back from this pilot.
+            [ "$draft" = false ] || continue
+            # Auto-merge the owner switched on is the owner's call.
+            [ "$enabled_by" = - ] || continue
+
+            # Per PR, so one failed call never stops the rest of the sweep.
+            # Reviews come oldest first, so the last line is Copilot's latest.
+            if ! reviews=$(gh api --paginate "repos/$REPO/pulls/$number/reviews?per_page=100" \
+              --jq '.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")
+                | "\(.state) \(.commit_id)"'); then
+              echo "::warning::#$number: could not read its reviews"
+              failed=1
+              continue
+            fi
+            latest=$(printf '%s\n' "$reviews" | tail -n 1)
+            [ "$latest" = "APPROVED $head_sha" ] || continue
+
+            # Merge only once GitHub reports the PR mergeable with its required
+            # checks passed; until then the next sweep looks again.
+            if ! state=$(gh pr view "$number" --repo "$REPO" --json mergeStateStatus \
+              --jq .mergeStateStatus); then
+              echo "::warning::#$number: could not read its merge state"
+              failed=1
+              continue
+            fi
+            case "$state" in
+            CLEAN | UNSTABLE | HAS_HOOKS) ;;
+            *) continue ;;
+            esac
+            # GitHub refuses unless the head is still the approved commit.
+            if gh pr merge --squash --match-head-commit "$head_sha" \
+              --repo "$REPO" "$number"; then
+              echo "::notice::#$number: merged $head_sha, which $copilot approved"
+              for workflow in ci.yml checks.yml; do
+                if ! gh workflow run "$workflow" --ref "$default_branch" --repo "$REPO"; then
+                  echo "::warning::#$number: merged, but could not start $workflow on $default_branch"
+                  failed=1
+                fi
+              done
+              # A dispatch runs on the branch tip at that moment, so a merge
+              # landing before either one leaves this commit without that run.
+              # Checked after both: the tip only moves forward, so a tip still
+              # at the merge commit means both ran on it. Said loudly rather
+              # than threading a revision through every reusable workflow; the
+              # tip's runs still cover the combined result.
+              merged=$(gh pr view "$number" --repo "$REPO" --json mergeCommit \
+                --jq .mergeCommit.oid || true)
+              tip=$(gh api "repos/$REPO/commits/$default_branch" --jq .sha || true)
+              if [ -z "$merged" ] || [ "$merged" != "$tip" ]; then
+                echo "::warning::#$number: $default_branch moved past its merge commit ${merged:-(unknown)} before its ci and checks runs started, so they may test ${tip:-a later commit} instead"
+                failed=1
+              fi
+            else
+              echo "::warning::#$number: could not merge $head_sha"
+              failed=1
+            fi
+          done 3<<EOF
+          $prs
+          EOF
+          exit "$failed"

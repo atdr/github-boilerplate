@@ -254,6 +254,51 @@ repository variable, because a job-level `if:` can read `vars` but not
   security group filtered a high advisory out of its own job and still reported
   success, so the alert sat open with nothing to show for it.
 
+## Copilot auto-merge (pilot)
+
+In this repo only, and not yet a reusable workflow: an owner PR that Copilot
+approved merges itself once every gate the ruleset requires passes.
+`copilot-auto-merge.yml` merges it, and the ruleset refuses the merge until the
+gates are green and every review thread is resolved, so a Copilot review with
+comments blocks it. The ruleset asks Copilot for a review on each PR and on
+every push to it.
+
+- **Whose PRs.** Only the owner's, from a branch in this repo: never a fork,
+  never Dependabot (its own auto-merge above covers it), and never a
+  release-please PR, so the release stays a human checkpoint before any caller
+  picks a change up. A draft is left alone, which is how to hold one back.
+- **Only the commit Copilot approved.** The merge goes ahead only while
+  Copilot's latest review is an approval of the PR's current head, and once
+  GitHub reports the PR mergeable. It names that commit (`--match-head-commit`),
+  so GitHub refuses it if a push has moved the head. Not GitHub's auto-merge:
+  that stays on across pushes, so a push Copilot never saw could merge if its
+  checks passed before anything switched it off.
+- **No `pull_request_review` trigger.** GitHub holds a run started by Copilot's
+  review for manual approval before any job is read, reportedly starts none for
+  an approval without inline comments, and would run the PR's own copy of the
+  workflow with a write token. So a sweep every ten minutes merges what is
+  ready. It runs the copy on the default branch, so a PR, including the one that
+  changes the workflow, never runs its own version, and it has no
+  `workflow_dispatch`, since a manual run can pick a PR branch's copy. Nothing
+  from a PR is checked out or run.
+- **CI on `main` still runs.** A merge made with `GITHUB_TOKEN` starts no `push`
+  workflow, so after each merge the sweep dispatches `ci` and `checks` on the
+  default branch, which that token may do. A dispatch runs on the branch tip, so
+  if another merge lands before either dispatch the sweep fails with a warning
+  naming the commit left without runs of its own; the tip's runs still cover the
+  combined result.
+- **Risk accepted.** A change can be written by an agent, approved by Copilot
+  and merged with no human reading it. The release PR is then the only
+  checkpoint before the change reaches caller repos. On its first five PRs here
+  Copilot approved every one with no comments, so it is a light filter.
+
+**Extend it** to other repos, as a reusable workflow, once it has merged at
+least ten PRs here with no change reverted or fixed afterwards for something a
+reviewer should have caught, and with no push after an approval ever seen to
+merge. **End it** on the first change that reaches a release PR broken in a way
+a reading would have caught, or if Copilot reviews stop arriving reliably:
+delete the workflow and drop the ruleset's Copilot review rule.
+
 ## Repository settings
 
 Tracked as data in `settings/` and applied by `scripts/configure.sh`;
@@ -281,7 +326,12 @@ workflow can open or approve a PR it was not built to.
 The ruleset (`settings/ruleset-main.json`) blocks deletion and force pushes,
 requires linear history, a PR with resolved conversations and squash merge, and
 the gates. No bypass actors, so it binds admins too. Zero required approvals:
-these are solo repos.
+these are solo repos. Where the repo runs the Copilot auto-merge pilot, it also
+asks Copilot to review each PR and every push to it, which reaches only authors
+with Copilot code review, so not Dependabot or release-please. Elsewhere the
+rule is dropped, since nothing acts on those reviews. A Copilot approval counts
+toward required approvals only where a Copilot setting allows it, and even then
+a count of one would leave those two waiting for an approval that never comes.
 
 The exception is a repo whose owner commits straight to the default branch on
 purpose, such as a link list where each change is one validated line and a PR
