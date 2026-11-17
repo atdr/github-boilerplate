@@ -205,10 +205,11 @@ jobs:
   #   across several files, audited one at a time, since one requirements file
   #   can list it once.
   # Without a lock, each tree is installed into a venv of its own
-  # (`pip install -e .` and the `install` input) and pip-audit reads what landed
-  # there; pip itself is uninstalled first, being the installer rather than a
-  # dependency. Either way, each line of $RUNNER_TEMP/audit/<tree>.args holds
-  # the arguments of one pip-audit run.
+  # (`pip install -e .` with only the index options of the `install` input, and
+  # the `install` input itself) and pip-audit reads what landed there; pip
+  # itself is uninstalled first, being the installer rather than a dependency.
+  # Either way, each line of $RUNNER_TEMP/audit/<tree>.args holds the arguments
+  # of one pip-audit run.
   audit:
     name: dependency audit
     if: inputs.audit
@@ -283,8 +284,38 @@ jobs:
               done > "$out/$tree.args"
             done
           elif [ -f pyproject.toml ] || [ -f setup.py ]; then
+            # The runtime tree resolves from the same indexes as `install`, so
+            # its index options are picked out of it, and nothing else: no
+            # extras, and no other part of it runs. set -f stops a word of it
+            # being expanded as a glob; quotes around a value are dropped,
+            # since word splitting keeps them.
+            index=()
+            set -f
+            # shellcheck disable=SC2086
+            set -- $INSTALL
+            set +f
+            while [ $# -gt 0 ]; do
+              case $1 in
+                --index-url | -i | --extra-index-url | --find-links | -f | --trusted-host)
+                  if [ $# -gt 1 ]; then
+                    value=${2#[\"\']}
+                    index+=("$1" "${value%[\"\']}")
+                    shift
+                  fi
+                  ;;
+                --index-url=* | --extra-index-url=* | --find-links=* | --trusted-host=*)
+                  value=${1#*=}
+                  value=${value#[\"\']}
+                  index+=("${1%%=*}=${value%[\"\']}")
+                  ;;
+                --no-index)
+                  index+=("$1")
+                  ;;
+              esac
+              shift
+            done
             python -m venv "$out/runtime"
-            "$out/runtime/bin/pip" install --quiet -e .
+            "$out/runtime/bin/pip" install --quiet "${index[@]}" -e .
             python -m venv "$out/development"
             (
               export VIRTUAL_ENV="$out/development" PATH="$out/development/bin:$PATH"
