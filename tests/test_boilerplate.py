@@ -674,9 +674,16 @@ def test_python_ci_blocks_on_runtime_and_reports_development_advisories():
 
 def test_python_ci_audit_resolves_runtime_without_extras_or_groups():
     resolve = python_ci_audit_step("Resolve runtime and development dependencies")
-    runtime, development = re.findall(r"uv export --locked[^\n]*\n[^\n]*", resolve)
-    assert "--no-default-groups" in runtime and "--all-extras" not in runtime
-    assert "--all-extras --all-groups" in development
+    export_args = re.search(r'export_args="([^"]*)"', resolve).group(1)
+    assert "--no-default-groups" in export_args and "--locked" in export_args
+    assert 'uv export $export_args -o "$out/export-runtime.txt"' in resolve
+    # Never one selection of every extra and group: uv refuses it when the
+    # project declares any of them conflicting.
+    assert "--all-extras" not in resolve and "--all-groups" not in resolve
+    assert '--selections pyproject.toml' in resolve
+    assert 'uv export $export_args "$kind" "$name"' in resolve
+    assert '"$out/runtime" "$out/export-runtime.txt"' in resolve
+    assert '"$out/development" "$out"/export-*.txt' in resolve
     assert '"$out/runtime/bin/pip" install --quiet -e .' in resolve
     # Fails rather than passing with nothing audited.
     assert "exit 1" in resolve

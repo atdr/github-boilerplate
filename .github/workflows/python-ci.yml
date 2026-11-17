@@ -256,12 +256,24 @@ jobs:
           if [ "$UV" = true ]; then
             # --no-emit-local leaves out the project and any path dependency,
             # which are not on PyPI to audit.
-            uv export --locked --quiet --format requirements-txt --no-emit-local \
-              --no-default-groups -o "$out/export-runtime.txt"
-            uv export --locked --quiet --format requirements-txt --no-emit-local \
-              --all-extras --all-groups -o "$out/export-development.txt"
+            export_args="--locked --quiet --format requirements-txt --no-emit-local --no-default-groups"
+            # Unquoted on purpose: it is a list of arguments.
+            # shellcheck disable=SC2086
+            uv export $export_args -o "$out/export-runtime.txt"
+            # The development tree is the runtime export plus one export per
+            # extra and per dependency group: uv refuses a single selection of
+            # them all when the project declares any of them conflicting.
+            python -I "$RUNNER_TEMP/audit-requirements.py" --selections pyproject.toml \
+              > "$out/selections"
+            n=0
+            while read -r kind name <&3; do
+              n=$((n + 1))
+              # shellcheck disable=SC2086
+              uv export $export_args "$kind" "$name" -o "$out/export-development-$n.txt"
+            done 3< "$out/selections"
+            python -I "$RUNNER_TEMP/audit-requirements.py" "$out/runtime" "$out/export-runtime.txt"
+            python -I "$RUNNER_TEMP/audit-requirements.py" "$out/development" "$out"/export-*.txt
             for tree in runtime development; do
-              python -I "$RUNNER_TEMP/audit-requirements.py" "$out/$tree" "$out/export-$tree.txt"
               # One pip-audit run per file it wrote, none if it wrote none:
               # pip-audit refuses a requirements file with nothing in it.
               for file in "$out/$tree"-*.txt; do

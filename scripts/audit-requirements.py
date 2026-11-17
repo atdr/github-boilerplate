@@ -2,6 +2,7 @@
 """Turns uv's exported requirements into pip-audit's input.
 
 Usage: audit-requirements.py OUT_PREFIX EXPORT [EXPORT ...]
+       audit-requirements.py --selections PYPROJECT
 
 Reads one or more `uv export --format requirements-txt` files, hashed, and
 writes what pip-audit should check to OUT_PREFIX-1.txt, OUT_PREFIX-2.txt and
@@ -26,12 +27,18 @@ interpreter, before anything is installed.
 
 Writes nothing when no requirement is left, since pip-audit refuses an empty
 requirements file.
+
+With --selections, prints instead one line per extra and dependency group that
+PYPROJECT declares, `--extra NAME` or `--group NAME`, for the job to export
+each on its own and pass every export here together. uv refuses one export of
+`--all-extras --all-groups` when the project declares any of them conflicting.
 """
 
 from __future__ import annotations
 
 import re
 import sys
+import tomllib
 from pathlib import Path
 
 NAME = r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?"
@@ -114,8 +121,25 @@ def prepare(texts: list[str], label: str) -> list[str]:
     return ["\n".join(entries) + "\n" for entries in files]
 
 
+def selections(pyproject: Path) -> list[str]:
+    """`--extra NAME` for each extra, then `--group NAME` for each group."""
+    if not pyproject.is_file():
+        return []
+    data = tomllib.loads(pyproject.read_text())
+    extras = list(data.get("project", {}).get("optional-dependencies", {}))
+    groups = list(data.get("dependency-groups", {}))
+    # uv's older spelling of the dev group, which `--group dev` still selects.
+    if data.get("tool", {}).get("uv", {}).get("dev-dependencies") and "dev" not in groups:
+        groups.append("dev")
+    return [f"--extra {name}" for name in extras] + [f"--group {name}" for name in groups]
+
+
 def main(argv: list[str]) -> int:
-    if len(argv) < 2:
+    if len(argv) == 2 and argv[0] == "--selections":
+        for line in selections(Path(argv[1])):
+            print(line)
+        return 0
+    if len(argv) < 2 or argv[0].startswith("-"):
         print(__doc__.split("\n\n")[1], file=sys.stderr)
         return 2
     prefix = Path(argv[0])

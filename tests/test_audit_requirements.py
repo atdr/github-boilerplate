@@ -139,6 +139,55 @@ def test_blocks_ignores_comments_and_blank_lines_between_requirements():
     assert audit.blocks(text) == [["click==8.3.1 \\", HASH_A]]
 
 
+def selections(tmp_path: Path, pyproject: str | None) -> list[str]:
+    path = tmp_path / "pyproject.toml"
+    if pyproject is not None:
+        path.write_text(pyproject)
+    result = subprocess.run(
+        [sys.executable, "-I", str(SCRIPT), "--selections", str(path)],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return result.stdout.splitlines()
+
+
+def test_selections_lists_each_extra_and_group_on_its_own(tmp_path):
+    pyproject = """
+[project]
+name = "demo"
+dependencies = ["click"]
+
+[project.optional-dependencies]
+old = ["requests==2.31.0"]
+new = ["requests==2.34.2"]
+
+[dependency-groups]
+dev = ["pytest"]
+docs = ["mkdocs"]
+
+[tool.uv]
+conflicts = [[{ extra = "old" }, { extra = "new" }]]
+"""
+    assert selections(tmp_path, pyproject) == [
+        "--extra old",
+        "--extra new",
+        "--group dev",
+        "--group docs",
+    ]
+
+
+def test_selections_includes_uvs_older_dev_dependencies(tmp_path):
+    pyproject = '[project]\nname = "demo"\n\n[tool.uv]\ndev-dependencies = ["pytest"]\n'
+    assert selections(tmp_path, pyproject) == ["--group dev"]
+
+
+def test_selections_is_empty_without_extras_groups_or_pyproject(tmp_path):
+    assert selections(tmp_path, '[project]\nname = "demo"\n') == []
+    (tmp_path / "pyproject.toml").unlink()
+    assert selections(tmp_path, None) == []
+
+
 def test_requires_an_output_prefix_and_an_export(tmp_path):
     result = subprocess.run([sys.executable, "-I", str(SCRIPT)], capture_output=True, text=True)
     assert result.returncode == 2 and result.stderr.startswith("Usage: ")
