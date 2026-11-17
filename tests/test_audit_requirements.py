@@ -7,6 +7,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "audit-requirements.py"
 _spec = importlib.util.spec_from_file_location("audit_requirements", SCRIPT)
 assert _spec and _spec.loader
@@ -205,3 +207,46 @@ def test_falls_back_to_tomli_where_there_is_no_tomllib(tmp_path):
     result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
     assert result.stdout.splitlines() == ["--group dev"]
+
+
+@pytest.mark.parametrize(
+    ("install", "expected"),
+    [
+        ('pip install -e ".[dev]"', []),
+        (
+            'pip install --extra-index-url https://x.example/simple -e ".[dev]"',
+            ["--extra-index-url", "https://x.example/simple"],
+        ),
+        (
+            'pip install --index-url=https://x.example/simple -i "https://y.example/simple" -e .',
+            ["--index-url=https://x.example/simple", "-i", "https://y.example/simple"],
+        ),
+        (
+            "pip install -f /wheels --find-links='/w2' --trusted-host x.example --no-index -e .[*]",
+            ["-f", "/wheels", "--find-links=/w2", "--trusted-host", "x.example", "--no-index"],
+        ),
+        # Quotes keep a path with a space in one piece, as the shell would.
+        (
+            'pip install --find-links "vendor/wheel cache" --find-links="a b" -e .',
+            ["--find-links", "vendor/wheel cache", "--find-links=a b"],
+        ),
+        # Index options of a later command in the same input count too.
+        (
+            'pip install -e . && pip install --extra-index-url=https://z.example/simple tool',
+            ["--extra-index-url=https://z.example/simple"],
+        ),
+        # Nothing is globbed, and a trailing option with no value is dropped.
+        ("pip install * --extra-index-url", []),
+    ],
+)
+def test_index_options_picks_only_index_options_out_of_install(tmp_path, install, expected):
+    (tmp_path / "match-me").write_text("")
+    result = subprocess.run(
+        [sys.executable, "-I", str(SCRIPT), "--index-options", install],
+        capture_output=True,
+        text=True,
+        check=True,
+        cwd=tmp_path,
+    )
+    # NUL after each, so a value with a space survives the shell's read.
+    assert result.stdout == "".join(option + "\0" for option in expected)

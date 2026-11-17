@@ -3,6 +3,7 @@
 
 Usage: audit-requirements.py OUT_PREFIX EXPORT [EXPORT ...]
        audit-requirements.py --selections PYPROJECT
+       audit-requirements.py --index-options INSTALL
 
 Reads one or more `uv export --format requirements-txt` files, hashed, and
 writes what pip-audit should check to OUT_PREFIX-1.txt, OUT_PREFIX-2.txt and
@@ -32,11 +33,19 @@ With --selections, prints instead one line per extra and dependency group that
 PYPROJECT declares, `--extra NAME` or `--group NAME`, for the job to export
 each on its own and pass every export here together. uv refuses one export of
 `--all-extras --all-groups` when the project declares any of them conflicting.
+
+With --index-options, prints the index options in INSTALL, the job's `install`
+input, each followed by a NUL byte: index URLs, find links, trusted hosts and
+--no-index. Without a uv.lock, the job installs the runtime tree with these
+alone, so it resolves from the caller's indexes without the extras or anything
+else `install` does. INSTALL is split as the shell would split its words,
+quotes included, but nothing in it runs.
 """
 
 from __future__ import annotations
 
 import re
+import shlex
 import sys
 from pathlib import Path
 
@@ -141,7 +150,34 @@ def selections(pyproject: Path) -> list[str]:
     return [f"--extra {name}" for name in extras] + [f"--group {name}" for name in groups]
 
 
+# pip's options naming where packages come from, and the one flag among them.
+INDEX_OPTIONS = {"--index-url", "-i", "--extra-index-url", "--find-links", "-f", "--trusted-host"}
+INDEX_FLAGS = {"--no-index"}
+
+
+def index_options(install: str) -> list[str]:
+    """The index options in `install`, in order, each `--opt value` kept as two."""
+    words = shlex.split(install)
+    found: list[str] = []
+    i = 0
+    while i < len(words):
+        word = words[i]
+        if word in INDEX_OPTIONS:
+            if i + 1 < len(words):
+                found += [word, words[i + 1]]
+                i += 1
+        elif word.startswith("--") and word.partition("=")[0] in INDEX_OPTIONS and "=" in word:
+            found.append(word)
+        elif word in INDEX_FLAGS:
+            found.append(word)
+        i += 1
+    return found
+
+
 def main(argv: list[str]) -> int:
+    if len(argv) == 2 and argv[0] == "--index-options":
+        sys.stdout.write("".join(option + "\0" for option in index_options(argv[1])))
+        return 0
     if len(argv) == 2 and argv[0] == "--selections":
         for line in selections(Path(argv[1])):
             print(line)

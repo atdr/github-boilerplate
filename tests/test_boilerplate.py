@@ -11,7 +11,6 @@ import re
 import shutil
 import subprocess
 import sys
-import textwrap
 from pathlib import Path
 
 import pytest
@@ -690,41 +689,15 @@ def test_python_ci_audit_resolves_runtime_without_extras_or_groups():
     assert "exit 1" in resolve
 
 
-@pytest.mark.parametrize(
-    ("install", "expected"),
-    [
-        ('pip install -e ".[dev]"', []),
-        (
-            'pip install --extra-index-url https://x.example/simple -e ".[dev]"',
-            ["--extra-index-url", "https://x.example/simple"],
-        ),
-        (
-            'pip install --index-url=https://x.example/simple -i "https://y.example/simple" -e .',
-            ["--index-url=https://x.example/simple", "-i", "https://y.example/simple"],
-        ),
-        (
-            "pip install -f /wheels --find-links='/w2' --trusted-host x.example --no-index -e .[*]",
-            ["-f", "/wheels", "--find-links=/w2", "--trusted-host", "x.example", "--no-index"],
-        ),
-        # Nothing globbed, and a trailing option with no value dropped.
-        ("pip install * --extra-index-url", []),
-    ],
-)
-def test_python_ci_audit_runtime_install_takes_only_the_index_options(tmp_path, install, expected):
-    # Without a uv.lock the runtime tree must resolve from the caller's
-    # indexes, but take nothing else from `install`, which is never run here.
+def test_python_ci_audit_runtime_install_takes_only_the_index_options():
+    # Without a uv.lock the runtime tree resolves from the caller's indexes,
+    # picked out of `install` by the script (tests/test_audit_requirements.py),
+    # never by running it.
     resolve = python_ci_audit_step("Resolve runtime and development dependencies")
-    snippet = textwrap.dedent(resolve[resolve.index("index=()") : resolve.index('python -m venv "$out/runtime"')])
-    (tmp_path / "match-me").write_text("")
-    result = subprocess.run(
-        ["bash", "-c", snippet + 'printf "%s\\n" "${index[@]}"'],
-        env={"INSTALL": install, "PATH": os.environ["PATH"]},
-        cwd=tmp_path,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    assert [line for line in result.stdout.splitlines() if line] == expected
+    assert '--index-options "$INSTALL"' in resolve
+    assert "while IFS= read -r -d '' option; do" in resolve
+    assert '"$out/runtime/bin/pip" install --quiet "${index[@]}" -e .' in resolve
+    assert resolve.count('eval "$INSTALL"') == 1
 
 
 def test_python_ci_audit_prepares_uv_exports_with_the_fetched_script():

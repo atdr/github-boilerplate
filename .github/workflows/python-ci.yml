@@ -285,35 +285,14 @@ jobs:
             done
           elif [ -f pyproject.toml ] || [ -f setup.py ]; then
             # The runtime tree resolves from the same indexes as `install`, so
-            # its index options are picked out of it, and nothing else: no
-            # extras, and no other part of it runs. set -f stops a word of it
-            # being expanded as a glob; quotes around a value are dropped,
-            # since word splitting keeps them.
+            # the script picks its index options out of it, and nothing else:
+            # no extras, and no other part of it runs.
+            python -I "$RUNNER_TEMP/audit-requirements.py" --index-options "$INSTALL" \
+              > "$out/index-options"
             index=()
-            set -f
-            # shellcheck disable=SC2086
-            set -- $INSTALL
-            set +f
-            while [ $# -gt 0 ]; do
-              case $1 in
-                --index-url | -i | --extra-index-url | --find-links | -f | --trusted-host)
-                  if [ $# -gt 1 ]; then
-                    value=${2#[\"\']}
-                    index+=("$1" "${value%[\"\']}")
-                    shift
-                  fi
-                  ;;
-                --index-url=* | --extra-index-url=* | --find-links=* | --trusted-host=*)
-                  value=${1#*=}
-                  value=${value#[\"\']}
-                  index+=("${1%%=*}=${value%[\"\']}")
-                  ;;
-                --no-index)
-                  index+=("$1")
-                  ;;
-              esac
-              shift
-            done
+            while IFS= read -r -d '' option; do
+              index+=("$option")
+            done < "$out/index-options"
             python -m venv "$out/runtime"
             "$out/runtime/bin/pip" install --quiet "${index[@]}" -e .
             python -m venv "$out/development"
