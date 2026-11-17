@@ -25,6 +25,8 @@ function indent(line) {
 
 {
 	line = $0
+	# A workflow committed with CRLF endings decodes with a \r on every line.
+	sub(/\r$/, "", line)
 	sub(/[ \t]+#.*/, "", line)
 	sub(/^[ \t]*#.*/, "", line)
 	if (line ~ /^[ \t]*$/)

@@ -37,6 +37,20 @@ def test_this_repo_has_every_gate_workflow_checked():
     assert len(GATE_WORKFLOWS) == 7
 
 
+def test_crlf_line_endings():
+    # Passed as a string, not read from a file: read_text() would turn the
+    # CRLF into LF and hide the case. Bytes in and out, since text mode and
+    # splitlines() would both drop a stray \r from a printed name.
+    workflow = b"jobs:\r\n  gate:\r\n    name: ci gate\r\n    runs-on: ubuntu-latest\r\n"
+    result = subprocess.run(
+        ["awk", "-f", str(ROOT / "scripts/workflow-job-names.awk")],
+        input=workflow,
+        check=True,
+        capture_output=True,
+    )
+    assert result.stdout == b"ci gate\n"
+
+
 def test_ci_without_a_gate_job():
     workflow = """\
 name: ci gate
