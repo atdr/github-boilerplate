@@ -279,9 +279,14 @@ jobs:
           out="$RUNNER_TEMP/audit"
           mkdir -p "$out"
           if [ "$UV" = true ]; then
+            # Checked once against the audit's Python, then exported --frozen:
+            # with --locked, every export looks for an interpreter meeting its
+            # selection's requires-python, and setup-uv's UV_PYTHON pins this
+            # one, so a group declaring a newer requires-python would fail.
+            uv lock --check --quiet
             # --no-emit-local leaves out the project and any path dependency,
             # which are not on PyPI to audit.
-            export_args="--locked --quiet --format requirements-txt --no-emit-local --no-default-groups"
+            export_args="--frozen --quiet --format requirements-txt --no-emit-local --no-default-groups"
             # Unquoted on purpose: it is a list of arguments.
             # shellcheck disable=SC2086
             uv export $export_args -o "$out/export-runtime.txt"

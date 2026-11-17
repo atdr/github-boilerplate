@@ -675,7 +675,9 @@ def test_python_ci_blocks_on_runtime_and_reports_development_advisories():
 def test_python_ci_audit_resolves_runtime_without_extras_or_groups():
     resolve = python_ci_audit_step("Resolve runtime and development dependencies")
     export_args = re.search(r'export_args="([^"]*)"', resolve).group(1)
-    assert "--no-default-groups" in export_args and "--locked" in export_args
+    assert "--no-default-groups" in export_args and "--frozen" in export_args
+    # --frozen trusts the lock, so it is checked first: a stale lock fails.
+    assert resolve.index("uv lock --check") < resolve.index("uv export")
     assert 'uv export $export_args -o "$out/export-runtime.txt"' in resolve
     # Never one selection of every extra and group: uv refuses it when the
     # project declares any of them conflicting.
