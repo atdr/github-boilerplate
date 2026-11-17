@@ -8,8 +8,8 @@ Reads one or more `uv export --format requirements-txt` files, hashed, and
 writes what pip-audit should check to OUT_PREFIX-1.txt, OUT_PREFIX-2.txt and
 so on, each to be audited on its own. Runs in
 .github/workflows/python-ci.yml's audit job, which fetches it from this repo at
-the caller's pinned commit. Standard library only: it runs on the runner's
-interpreter, before anything is installed.
+the caller's pinned commit. Standard library only, apart from tomli on Python
+3.10: it runs on the runner's interpreter, beside nothing but pip-audit.
 
 - Each requirement keeps its hashes, so `pip-audit --disable-pip` checks the
   pinned versions as they are without resolving anything.
@@ -38,8 +38,15 @@ from __future__ import annotations
 
 import re
 import sys
-import tomllib
 from pathlib import Path
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    # Python 3.10, which `python-version` may name, has no tomllib. pip-audit,
+    # installed into this same interpreter first, requires tomli, and `python
+    # -I` still sees that interpreter's site-packages.
+    import tomli as tomllib
 
 NAME = r"[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?"
 DIRECT_URL = re.compile(rf"\s*({NAME})\s*(?:\[[^\]]*\])?\s*@")

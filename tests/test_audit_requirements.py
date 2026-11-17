@@ -191,3 +191,17 @@ def test_selections_is_empty_without_extras_groups_or_pyproject(tmp_path):
 def test_requires_an_output_prefix_and_an_export(tmp_path):
     result = subprocess.run([sys.executable, "-I", str(SCRIPT)], capture_output=True, text=True)
     assert result.returncode == 2 and result.stderr.startswith("Usage: ")
+
+
+def test_falls_back_to_tomli_where_there_is_no_tomllib(tmp_path):
+    # Python 3.10 has no tomllib; pip-audit, installed beside the script,
+    # brings tomli. Simulated here: tomllib blocked, tomli standing in.
+    (tmp_path / "pyproject.toml").write_text('[dependency-groups]\ndev = ["pytest"]\n')
+    code = (
+        "import runpy, sys, tomllib; sys.modules['tomli'] = tomllib; sys.modules['tomllib'] = None;"
+        f" sys.argv = ['audit-requirements.py', '--selections', {str(tmp_path / 'pyproject.toml')!r}];"
+        f" runpy.run_path({str(SCRIPT)!r}, run_name='__main__')"
+    )
+    result = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.splitlines() == ["--group dev"]
