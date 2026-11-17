@@ -30,8 +30,7 @@ def test_triggers_run_only_the_default_branch_copy(workflow):
     # PyYAML reads a bare `on:` as True.
     on = workflow.get("on", workflow.get(True))
     # pull_request_review would run the PR's own copy with a write token.
-    assert set(on) == {"schedule", "workflow_dispatch", "pull_request_target"}
-    assert on["pull_request_target"] == {"types": ["synchronize"]}
+    assert set(on) == {"schedule", "workflow_dispatch"}
 
 
 def test_permissions_are_minimal(workflow):
@@ -47,12 +46,11 @@ def test_nothing_from_the_pr_is_checked_out_or_run(workflow):
     assert "checkout" not in WORKFLOW.read_text()
 
 
-def test_switch_off_runs_on_every_push_to_an_owner_pr(workflow):
-    job = workflow["jobs"]["disable"]
-    assert "github.event_name == 'pull_request_target'" in job["if"]
-    assert "github.event.pull_request.user.login == github.repository_owner" in job["if"]
-    (step,) = job["steps"]
-    assert step["run"].startswith("gh pr merge --disable-auto ")
+def test_merges_directly_never_through_auto_merge(workflow):
+    # Auto-merge stays on across pushes, so a push Copilot never saw could
+    # merge; a direct merge bound to the approved commit cannot.
+    assert set(workflow["jobs"]) == {"sweep"}
+    assert "--auto" not in WORKFLOW.read_text()
 
 
 def test_concurrency_never_cancels(workflow):
@@ -61,7 +59,6 @@ def test_concurrency_never_cancels(workflow):
 
 def test_sweep_guards_are_in_the_script(workflow):
     job = workflow["jobs"]["sweep"]
-    assert job["if"] == "${{ github.event_name != 'pull_request_target' }}"
     (step,) = job["steps"]
     script = step["run"]
     assert step["env"]["OWNER"] == "${{ github.repository_owner }}"
@@ -75,6 +72,12 @@ def test_sweep_guards_are_in_the_script(workflow):
 
 FAKE_GH = r"""#!/bin/bash
 echo "$*" >>"$FAKE/calls"
+if [ "$1" = pr ] && [ "$2" = view ]; then
+	n=$3
+	[ ! -f "$FAKE/view-fail-$n" ] || exit 1
+	if [ -f "$FAKE/state-$n" ]; then cat "$FAKE/state-$n"; else echo CLEAN; fi
+	exit 0
+fi
 if [ "$1" = api ]; then
 	for arg in "$@"; do
 		case "$arg" in
@@ -85,6 +88,7 @@ if [ "$1" = api ]; then
 		repos/*/reviews*)
 			n=${arg#*/pulls/}
 			n=${n%%/*}
+			[ ! -f "$FAKE/reviews-fail-$n" ] || exit 1
 			[ ! -f "$FAKE/reviews-$n" ] || cat "$FAKE/reviews-$n"
 			;;
 		"repos/$REPO") echo main ;;
@@ -103,7 +107,8 @@ def pr(number, author=OWNER, head_repo=REPO, ref="feat/x", sha=HEAD, draft=False
     return "\t".join([str(number), author, head_repo, ref, sha, str(draft).lower(), enabled_by])
 
 
-def sweep(tmp_path: Path, prs: list[str], reviews: dict[int, list[str]], fail: bool = False):
+def sweep(tmp_path: Path, prs: list[str], reviews: dict[int, list[str]], fail: bool = False,
+          states: dict[int, str] | None = None, broken: tuple[str, ...] = ()):
     script = yaml.safe_load(WORKFLOW.read_text())["jobs"]["sweep"]["steps"][0]["run"]
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
@@ -114,6 +119,10 @@ def sweep(tmp_path: Path, prs: list[str], reviews: dict[int, list[str]], fail: b
         (tmp_path / f"reviews-{number}").write_text("".join(f"{line}\n" for line in lines))
     if fail:
         (tmp_path / "fail").touch()
+    for number, state in (states or {}).items():
+        (tmp_path / f"state-{number}").write_text(f"{state}\n")
+    for name in broken:
+        (tmp_path / name).touch()
     (tmp_path / "calls").touch()
     (tmp_path / "sweep.sh").write_text(script)
     result = subprocess.run(
@@ -127,15 +136,11 @@ def sweep(tmp_path: Path, prs: list[str], reviews: dict[int, list[str]], fail: b
     return result, merges
 
 
-def enable(number: int, sha: str = HEAD) -> str:
-    return f"pr merge --auto --squash --match-head-commit {sha} --repo {REPO} {number}"
+def merge(number: int, sha: str = HEAD) -> str:
+    return f"pr merge --squash --match-head-commit {sha} --repo {REPO} {number}"
 
 
-def disable(number: int) -> str:
-    return f"pr merge --disable-auto --repo {REPO} {number}"
-
-
-def test_sweep_enables_only_an_approval_of_the_current_head(tmp_path):
+def test_sweep_merges_only_an_approval_of_the_current_head(tmp_path):
     approved = [f"APPROVED {HEAD}"]
     result, merges = sweep(
         tmp_path,
@@ -150,7 +155,7 @@ def test_sweep_enables_only_an_approval_of_the_current_head(tmp_path):
             pr(8, author="github-actions[bot]", ref="release-please--branches--main"),
             pr(9, ref="release-please--branches--main"),
             pr(10, draft=True),
-            pr(11, enabled_by=OWNER),  # already on
+            pr(11, enabled_by=OWNER),  # the owner switched auto-merge on
             pr(12),  # no Copilot review yet
         ],
         {
@@ -161,21 +166,33 @@ def test_sweep_enables_only_an_approval_of_the_current_head(tmp_path):
         },
     )
     assert result.returncode == 0, result.stderr
-    assert merges == [enable(1)]
+    assert merges == [merge(1)]
 
 
-def test_sweep_switches_off_only_what_it_switched_on(tmp_path):
+def test_sweep_waits_until_github_reports_the_pr_mergeable(tmp_path):
+    approved = [f"APPROVED {HEAD}"]
     result, merges = sweep(
         tmp_path,
-        [
-            pr(1, enabled_by="github-actions[bot]"),  # a push since the approval
-            pr(2, enabled_by=OWNER),  # the owner's own choice
-            pr(3, enabled_by="github-actions[bot]"),  # still approved
-        ],
-        {1: [f"APPROVED {OLD}"], 2: [f"APPROVED {OLD}"], 3: [f"APPROVED {HEAD}"]},
+        [pr(1), pr(2), pr(3), pr(4)],
+        {n: approved for n in range(1, 5)},
+        states={1: "BLOCKED", 2: "BEHIND", 3: "UNSTABLE", 4: "UNKNOWN"},
     )
     assert result.returncode == 0, result.stderr
-    assert merges == [disable(1)]
+    assert merges == [merge(3)]
+
+
+def test_one_failed_read_does_not_stop_the_sweep(tmp_path):
+    approved = [f"APPROVED {HEAD}"]
+    result, merges = sweep(
+        tmp_path,
+        [pr(1), pr(2), pr(3)],
+        {n: approved for n in range(1, 4)},
+        broken=("reviews-fail-1", "view-fail-2"),
+    )
+    assert result.returncode == 1
+    assert "#1: could not read its reviews" in result.stdout
+    assert "#2: could not read its merge state" in result.stdout
+    assert merges == [merge(3)]
 
 
 def test_sweep_fails_visibly_but_tries_every_pr(tmp_path):
@@ -186,7 +203,7 @@ def test_sweep_fails_visibly_but_tries_every_pr(tmp_path):
         fail=True,
     )
     assert result.returncode == 1
-    assert merges == [enable(1), enable(2)]
+    assert merges == [merge(1), merge(2)]
 
 
 def test_sweep_with_no_open_prs(tmp_path):

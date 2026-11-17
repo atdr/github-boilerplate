@@ -258,27 +258,28 @@ repository variable, because a job-level `if:` can read `vars` but not
 
 In this repo only, and not yet a reusable workflow: an owner PR that Copilot
 approved merges itself once every gate the ruleset requires passes.
-`copilot-auto-merge.yml` switches GitHub's auto-merge on for it, and the ruleset
-holds the merge until the gates are green and every review thread is resolved,
-so a Copilot review with comments blocks it. The ruleset asks Copilot for a
-review on each PR and on every push to it.
+`copilot-auto-merge.yml` merges it, and the ruleset refuses the merge until the
+gates are green and every review thread is resolved, so a Copilot review with
+comments blocks it. The ruleset asks Copilot for a review on each PR and on
+every push to it.
 
 - **Whose PRs.** Only the owner's, from a branch in this repo: never a fork,
   never Dependabot (its own auto-merge above covers it), and never a
   release-please PR, so the release stays a human checkpoint before any caller
   picks a change up. A draft is left alone, which is how to hold one back.
-- **Only for the head Copilot approved.** Auto-merge goes on only while
-  Copilot's latest review is an approval whose commit is the PR's current head,
-  and GitHub refuses the call if a push lands in between. Every push to an owner
-  PR switches auto-merge off until Copilot approves the new head; otherwise a
-  push after the approval would merge unreviewed.
+- **Only the commit Copilot approved.** The merge goes ahead only while
+  Copilot's latest review is an approval of the PR's current head, and once
+  GitHub reports the PR mergeable. It names that commit (`--match-head-commit`),
+  so GitHub refuses it if a push has moved the head. Not GitHub's auto-merge:
+  that stays on across pushes, so a push Copilot never saw could merge if its
+  checks passed before anything switched it off.
 - **No `pull_request_review` trigger.** GitHub holds a run started by Copilot's
   review for manual approval before any job is read, reportedly starts none for
   an approval without inline comments, and would run the PR's own copy of the
-  workflow with a write token. So a sweep every ten minutes switches auto-merge
-  on, and `pull_request_target` switches it off after each push. Both run the
-  copy on the default branch, so a PR, including the one that changes the
-  workflow, never runs its own version. Nothing from a PR is checked out or run.
+  workflow with a write token. So a sweep every ten minutes merges what is
+  ready. It runs the copy on the default branch, so a PR, including the one that
+  changes the workflow, never runs its own version. Nothing from a PR is checked
+  out or run.
 - **Risk accepted.** A change can be written by an agent, approved by Copilot
   and merged with no human reading it. The release PR is then the only
   checkpoint before the change reaches caller repos. On its first five PRs here
@@ -286,10 +287,10 @@ review on each PR and on every push to it.
 
 **Extend it** to other repos, as a reusable workflow, once it has merged at
 least ten PRs here with no change reverted or fixed afterwards for something a
-reviewer should have caught, and with every push after an approval seen to
-switch auto-merge off. **End it** on the first change that reaches a release PR
-broken in a way a reading would have caught, or if Copilot reviews stop arriving
-reliably: delete the workflow and drop the ruleset's Copilot review rule.
+reviewer should have caught, and with no push after an approval ever seen to
+merge. **End it** on the first change that reaches a release PR broken in a way
+a reading would have caught, or if Copilot reviews stop arriving reliably:
+delete the workflow and drop the ruleset's Copilot review rule.
 
 ## Repository settings
 
