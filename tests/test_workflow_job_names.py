@@ -165,10 +165,19 @@ jobs:
   other:
     uses: ./.github/workflows/other.yml
     name: other
+  folded:
+    name: >-
+      ci gate
+    uses: ./.github/workflows/gate.yml
   plain:
     name: plain
 """
+    # `folded` is unreadable, but as a call it reports nothing either way.
     assert job_names(workflow) == ["plain"]
+
+
+def test_single_quoted_doubled_quote_is_one_quote():
+    assert job_names("jobs:\n  g:\n    name: 'it''s'\n") == ["it's"]
 
 
 @pytest.mark.parametrize(
@@ -185,6 +194,9 @@ jobs:
         ("  gate: *shared\n", "not a block mapping"),
         ("  gate:\n    <<: *shared\n", "merge key"),
         ("  gate:\n    name: *gate_name\n", "name: is not a one line value"),
+        # Both report `ci gate`, which the source text does not say.
+        ("  gate:\n    name: ${{ 'ci gate' }}\n", "name: uses an expression"),
+        ('  gate:\n    name: "ci\\u0020gate"\n', "name: has an escape"),
     ],
 )
 def test_unreadable_jobs_are_flagged_not_guessed(job, reason):

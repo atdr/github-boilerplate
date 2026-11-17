@@ -9,8 +9,8 @@
 # its checks are named `<name> / <called job>`, never `<name>` alone.
 #
 # A job this line based reading cannot be sure of prints `?<job>: <reason>`
-# instead: a name over several lines, a block scalar, a flow mapping, an anchor,
-# alias or merge key. configure.sh stops on that rather than guess, since a
+# instead: a name over several lines, a block scalar, an expression, a double
+# quoted escape, a flow mapping, an anchor, alias or merge key. configure.sh stops on that rather than guess, since a
 # wrong guess either requires a check that never reports (every merge blocked)
 # or drops one that does (auto-merge merging without it).
 #
@@ -54,9 +54,12 @@ function start_job(line) {
 function flush() {
 	if (!in_job)
 		return
-	if (bad != "")
+	# A reusable call reports no check of its own name, readable or not.
+	if (uses)
+		;
+	else if (bad != "")
 		print "?" job_id ": " bad
-	else if (!uses && name != "")
+	else if (name != "")
 		print name
 	in_job = 0
 }
@@ -115,10 +118,21 @@ depth > prop_indent {
 depth == prop_indent {
 	after_name = 0
 	if (match(line, key("name"))) {
-		value = unquote(substr(line, RLENGTH + 1))
+		raw = substr(line, RLENGTH + 1)
+		sub(/^[ \t]+/, "", raw)
+		value = unquote(raw)
 		if (value == "" || value ~ /^[|>&*!]/)
 			bad = "name: is not a one line value"
+		# GitHub evaluates the expression, so the check name is not this text.
+		else if (value ~ /\$\{\{/)
+			bad = "name: uses an expression"
+		# YAML decodes the escape, so the check name is not this text either.
+		else if (raw ~ /^"/ && value ~ /\\/)
+			bad = "name: has an escape"
 		else {
+			# A single quoted '' is one quote.
+			if (raw ~ /^'/)
+				gsub(/''/, "'", value)
 			name = value
 			after_name = 1
 		}
