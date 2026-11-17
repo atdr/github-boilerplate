@@ -56,6 +56,8 @@ repository_settings=$(mktemp)
 api_error=$(mktemp)
 protection=$(mktemp)
 trap 'rm -f "$workflow_settings" "$repository_settings" "$api_error" "$protection"' EXIT
+# Read first: a private repo gets no ruleset, so its gates are never used.
+visibility=$(gh api "repos/$repo" --jq .visibility)
 # Only a 404 means the repo has no workflows folder. gh prints that error body
 # to stdout, so the output only counts when the call succeeded.
 if ! workflows=$(gh api "repos/$repo/contents/.github/workflows" --jq '.[].path' 2>"$api_error"); then
@@ -75,6 +77,34 @@ for path in $workflows; do
 	# Decoded whole and matched with case, not piped into grep -q: under
 	# pipefail an early grep exit can SIGPIPE the decoder and read as no match.
 	decoded=$(printf '%s' "$content" | base64 --decode)
+	# Whether a gate workflow has the job that reports its gate. A job the awk
+	# script cannot read for certain prints `?...`; with the gate not found
+	# otherwise, stop before changing anything rather than guess either way.
+	case "$path" in
+	.github/workflows/pull-request.yml | .github/workflows/checks.yml | .github/workflows/ci.yml)
+		stem=${path##*/}
+		stem=${stem%.yml}
+		job_names=$(printf '%s\n' "$decoded" | awk -f "$here/scripts/workflow-job-names.awk")
+		case "
+$job_names
+" in
+		*"
+$stem gate
+"*) gate_jobs="${gate_jobs:-}$stem gate
+" ;;
+		*"
+?"*)
+			# Only where the answer is used: a private repo gets no ruleset.
+			if [ "$visibility" = public ]; then
+				echo "cannot tell whether $path has a job named \"$stem gate\":" >&2
+				printf '%s\n' "$job_names" | sed -n 's/^?/  /p' >&2
+				echo "Write each job's name: as one line in a block mapping, then rerun." >&2
+				exit 1
+			fi
+			;;
+		esac
+		;;
+	esac
 	all_workflows="${all_workflows:-}$decoded
 "
 done
@@ -101,19 +131,32 @@ else
 fi
 
 # A gate is required only where the repo has the workflow that reports it:
-# `<stem> gate` comes from .github/workflows/<stem>.yml, and a ruleset
-# requiring a check no workflow reports would block every merge. A repo with
-# none (a template whose workflows must also run in the repos made from it)
-# keeps the rest of the ruleset. scripts/ruleset.jq does the cut.
+# `<stem> gate` comes from a job named exactly that in
+# .github/workflows/<stem>.yml, and a ruleset requiring a check no job reports
+# would block every merge. A workflow with that file name but no such job (a
+# repo's own ci.yml, say) is reported in $gateless and requires nothing. A repo
+# with no gate (a template whose workflows must also run in the repos made from
+# it) keeps the rest of the ruleset. scripts/ruleset.jq does the cut.
 gates=
+gateless=
 for stem in pull-request checks ci; do
 	case "
-$workflows
+${gate_jobs:-}
 " in
 	*"
-.github/workflows/$stem.yml
+$stem gate
 "*) gates="$gates$stem gate
 " ;;
+	*)
+		case "
+$workflows
+" in
+		*"
+.github/workflows/$stem.yml
+"*) gateless="$gateless$stem.yml
+" ;;
+		esac
+		;;
 	esac
 done
 
@@ -121,7 +164,6 @@ done
 # nothing required, auto-merge merges a Dependabot PR at once, before any
 # check has run. That rules out private repos (GitHub Free gives them no
 # ruleset) and any repo with none of the gate workflows.
-visibility=$(gh api "repos/$repo" --jq .visibility)
 if [ "$visibility" = public ] && [ -n "$gates" ]; then
 	auto_merge=true
 else
@@ -215,8 +257,11 @@ if [ "$visibility" = public ]; then
 	if [ -n "$gates" ]; then
 		echo "requires: $(printf '%s' "$gates" | paste -sd, - | sed 's/,/, /g')"
 	else
-		echo "requires no status checks: none of pull-request.yml, checks.yml, ci.yml"
+		echo "requires no status checks: no workflow reports a gate"
 	fi
+	for file in $gateless; do
+		echo "not required: no job in $file reports \"${file%.yml} gate\""
+	done
 	if [ "$admin_bypass" = true ]; then
 		echo "admins may bypass the ruleset: the repo commits .github/admin-bypass"
 	fi
