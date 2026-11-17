@@ -58,6 +58,21 @@ scripts/configure.sh <owner/repo> [--apply|--diff]   # dry run by default
   listed in `release-please-config.json`'s `extra-files`, so the release PR
   rewrites the pins to the version it releases. `apply.sh` strips the marker. A
   test checks both halves.
+- **Copied files need porting:** a template change other than a pin reaches
+  existing repos only when someone copies it across, and a release bump in those
+  repos does not bring it. Whenever a change touches `template/`, warn the user
+  prominently in the session, not in the PR body, naming each repo that will
+  need it ported and any local divergence that rules out a plain copy. Start
+  from the dependency graph's dependents
+  (`https://github.com/atdr/github-boilerplate/network/dependents`, HTML only,
+  no API). Clone each and run `scripts/apply.sh <overlay> <clone> --diff` from
+  the changed checkout: it resolves and renders the files as an apply would, and
+  lists the missing ones. A repo needs the change where a path the change
+  touches is missing or differs there. Run it from the base commit too: a path
+  that already differed there has diverged locally, so a plain copy would
+  overwrite the repo's own edits. `--diff` cannot see removals, so also name a
+  repo that still has a path the change removed for its overlay. The graph lists
+  public repos only, so say so.
 - **Placeholders:** `__OWNER__` and `__REPO__` in template files, filled by
   `apply.sh`.
 - **Scripts** target bash 3.2 (macOS's `/bin/bash`): no `mapfile`, no
