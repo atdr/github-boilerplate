@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parent.parent
 WORKFLOW = ROOT / ".github/workflows/copilot-auto-merge.yml"
 REPO = "atdr/github-boilerplate"
 OWNER = "atdr"
-WRITE = {"contents": "write", "pull-requests": "write"}
+WRITE = {"actions": "write", "contents": "write", "pull-requests": "write"}
 
 
 @pytest.fixture(scope="module")
@@ -29,8 +29,9 @@ def steps(workflow: dict):
 def test_triggers_run_only_the_default_branch_copy(workflow):
     # PyYAML reads a bare `on:` as True.
     on = workflow.get("on", workflow.get(True))
-    # pull_request_review would run the PR's own copy with a write token.
-    assert set(on) == {"schedule", "workflow_dispatch"}
+    # pull_request_review would run the PR's own copy with a write token, and
+    # a manual workflow_dispatch run can pick a PR branch's copy.
+    assert set(on) == {"schedule"}
 
 
 def test_permissions_are_minimal(workflow):
@@ -138,6 +139,22 @@ def sweep(tmp_path: Path, prs: list[str], reviews: dict[int, list[str]], fail: b
 
 def merge(number: int, sha: str = HEAD) -> str:
     return f"pr merge --squash --match-head-commit {sha} --repo {REPO} {number}"
+
+
+def test_each_merge_starts_ci_and_checks_on_the_default_branch(tmp_path):
+    # A GITHUB_TOKEN merge starts no push run, so the sweep dispatches them.
+    result, _ = sweep(tmp_path, [pr(1)], {1: [f"APPROVED {HEAD}"]})
+    assert result.returncode == 0, result.stderr
+    calls = (tmp_path / "calls").read_text().splitlines()
+    assert calls[-3:] == [
+        merge(1),
+        f"workflow run ci.yml --ref main --repo {REPO}",
+        f"workflow run checks.yml --ref main --repo {REPO}",
+    ]
+    for name in ("ci", "checks"):
+        on = yaml.safe_load((ROOT / f".github/workflows/{name}.yml").read_text())
+        on = on.get("on", on.get(True))
+        assert "workflow_dispatch" in on
 
 
 def test_sweep_merges_only_an_approval_of_the_current_head(tmp_path):

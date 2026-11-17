@@ -278,8 +278,12 @@ every push to it.
   an approval without inline comments, and would run the PR's own copy of the
   workflow with a write token. So a sweep every ten minutes merges what is
   ready. It runs the copy on the default branch, so a PR, including the one that
-  changes the workflow, never runs its own version. Nothing from a PR is checked
-  out or run.
+  changes the workflow, never runs its own version, and it has no
+  `workflow_dispatch`, since a manual run can pick a PR branch's copy. Nothing
+  from a PR is checked out or run.
+- **CI on `main` still runs.** A merge made with `GITHUB_TOKEN` starts no `push`
+  workflow, so after each merge the sweep dispatches `ci` and `checks` on the
+  default branch, which that token may do.
 - **Risk accepted.** A change can be written by an agent, approved by Copilot
   and merged with no human reading it. The release PR is then the only
   checkpoint before the change reaches caller repos. On its first five PRs here

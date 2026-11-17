@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Started by copilot-auto-merge.yml after it merges: a merge made with
+  # GITHUB_TOKEN starts no push run.
+  workflow_dispatch:
 
 permissions:
   contents: read

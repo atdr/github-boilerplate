@@ -17,7 +17,12 @@
 # jobs, later failure), reportedly starts none for an approval without inline
 # comments, and runs the PR's own copy of this file with a write token, so a
 # PR could rewrite its own guards. Instead a scheduled sweep runs the copy on
-# the default branch, so a PR never runs its own version.
+# the default branch, so a PR never runs its own version. No
+# `workflow_dispatch` either: a manual run can pick a PR branch's copy.
+#
+# A merge made with GITHUB_TOKEN starts no `push` workflow, so after each merge
+# the sweep starts ci and checks on the default branch itself: a dispatch is one
+# of the events that token may start.
 #
 # Nothing from a PR is checked out or run: the job reads PR metadata through
 # the API and calls `gh pr merge`, and nothing else.
@@ -27,7 +32,6 @@ on:
   schedule:
     # Every 10 minutes: GitHub's schedule is best effort, so a run can lag.
     - cron: "*/10 * * * *"
-  workflow_dispatch:
 
 permissions: {}
 
@@ -42,6 +46,7 @@ jobs:
     timeout-minutes: 10
     runs-on: ubuntu-latest
     permissions:
+      actions: write # starting ci and checks on the merge
       contents: write # the squash merge
       pull-requests: write # merging a pull request
     steps:
@@ -106,6 +111,12 @@ jobs:
             if gh pr merge --squash --match-head-commit "$head_sha" \
               --repo "$REPO" "$number"; then
               echo "::notice::#$number: merged $head_sha, which $copilot approved"
+              for workflow in ci.yml checks.yml; do
+                if ! gh workflow run "$workflow" --ref "$default_branch" --repo "$REPO"; then
+                  echo "::warning::#$number: merged, but could not start $workflow on $default_branch"
+                  failed=1
+                fi
+              done
             else
               echo "::warning::#$number: could not merge $head_sha"
               failed=1
