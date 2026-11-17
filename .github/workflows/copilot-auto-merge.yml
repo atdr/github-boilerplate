@@ -1,0 +1,133 @@
+# Pilot, this repo only: an owner PR that Copilot approved merges itself once
+# every gate the ruleset requires passes (STANDARDS.md, Copilot auto-merge).
+#
+# It only switches GitHub's auto-merge on, and only while Copilot's latest
+# review is an approval of the PR's current head. Never for a fork, Dependabot
+# (auto-merge.yml handles those) or release-please: the release PR stays a
+# human checkpoint before any caller picks a change up.
+#
+# Triggers. Not `pull_request_review`: GitHub holds a run started by Copilot's
+# review for manual approval before any job is read (action_required with no
+# jobs, later failure), reportedly starts none for an approval without inline
+# comments, and runs the PR's own copy of this file with a write token, so a
+# PR could rewrite its own guards. Instead a scheduled sweep enables
+# auto-merge, and `pull_request_target` switches it off after every push. Both
+# run the copy on the default branch, so a PR never runs its own version.
+#
+# Nothing from a PR is checked out or run: the jobs read PR metadata through
+# the API and call `gh pr merge`, and nothing else.
+name: copilot-auto-merge
+
+on:
+  schedule:
+    # Every 10 minutes: GitHub's schedule is best effort, so a run can lag.
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+  # Safe: nothing from the PR is checked out or run (see the top of this file).
+  pull_request_target: # zizmor: ignore[dangerous-triggers]
+    types: [synchronize]
+
+permissions: {}
+
+# Never cancelled: a cancelled switch off would leave auto-merge on for an
+# unreviewed push. One pending run per PR (and one per sweep) is enough, since
+# a queued duplicate does the same thing.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || 'sweep' }}
+  cancel-in-progress: false
+
+jobs:
+  disable:
+    name: switch auto-merge off after a push
+    # Every push to an owner PR, whoever enabled auto-merge: the approval was
+    # for the previous head. Dependabot's and release-please's PRs are not the
+    # owner's, so their own auto-merge handling is left alone.
+    if: >-
+      ${{ github.event_name == 'pull_request_target'
+      && github.event.pull_request.user.login == github.repository_owner }}
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # the squash merge that auto-merge makes
+      pull-requests: write # switching auto-merge on and off
+    steps:
+      - name: Switch auto-merge off until Copilot approves the new head
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        # With auto-merge already off, this exits 0 and changes nothing.
+        run: gh pr merge --disable-auto --repo "$REPO" "$PR_NUMBER"
+
+  sweep:
+    name: auto-merge owner PRs that Copilot approved
+    if: ${{ github.event_name != 'pull_request_target' }}
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # the squash merge that auto-merge makes
+      pull-requests: write # switching auto-merge on and off
+    steps:
+      - name: Match auto-merge to Copilot's latest review
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          copilot='copilot-pull-request-reviewer[bot]'
+          failed=0
+          # Read from the API: a schedule event's payload has no repository.
+          default_branch=$(gh api "repos/$REPO" --jq .default_branch)
+          [ -n "$default_branch" ] || exit 1
+          # Empty fields print as "-": a tab is whitespace to `read`, so an
+          # empty field would shift the ones after it.
+          # Into the default branch only: the ruleset that makes auto-merge
+          # wait for the gates covers that branch alone.
+          prs=$(gh api --paginate \
+            "repos/$REPO/pulls?state=open&base=$default_branch&per_page=100" \
+            --jq '.[] | [.number, .user.login, (.head.repo.full_name // "-"),
+              .head.ref, .head.sha, .draft,
+              (.auto_merge.enabled_by.login // "-")] | @tsv')
+          while IFS=$'\t' read -r number author head_repo head_ref head_sha draft enabled_by <&3; do
+            [ -n "$number" ] || continue
+            # The owner's PRs from a branch in this repo, never a fork.
+            if [ "$author" != "$OWNER" ] || [ "$head_repo" != "$REPO" ]; then
+              continue
+            fi
+            case "$author" in dependabot\[bot\] | github-actions\[bot\]) continue ;; esac
+            case "$head_ref" in dependabot/* | release-please--*) continue ;; esac
+            # A draft is how the owner holds a PR back from this pilot.
+            [ "$draft" = false ] || continue
+
+            # Reviews come oldest first, so the last line is Copilot's latest.
+            latest=$(gh api --paginate "repos/$REPO/pulls/$number/reviews?per_page=100" \
+              --jq '.[] | select(.user.login == "copilot-pull-request-reviewer[bot]")
+                | "\(.state) \(.commit_id)"' | tail -n 1)
+
+            if [ "$latest" = "APPROVED $head_sha" ]; then
+              [ "$enabled_by" = - ] || continue
+              # --match-head-commit makes GitHub refuse if a push lands
+              # between reading the head and this call. With the gates
+              # already green, gh merges at once instead.
+              if gh pr merge --auto --squash --match-head-commit "$head_sha" \
+                --repo "$REPO" "$number"; then
+                echo "::notice::#$number: auto-merge on, $copilot approved $head_sha"
+              else
+                echo "::warning::#$number: could not switch auto-merge on"
+                failed=1
+              fi
+            elif [ "$enabled_by" = 'github-actions[bot]' ]; then
+              # This workflow switched it on for an approval that no longer
+              # covers the head, and the push's own run missed it. Auto-merge
+              # the owner switched on is left alone.
+              if gh pr merge --disable-auto --repo "$REPO" "$number"; then
+                echo "::notice::#$number: auto-merge off, $copilot's latest review is not an approval of $head_sha"
+              else
+                echo "::warning::#$number: could not switch auto-merge off"
+                failed=1
+              fi
+            fi
+          done 3<<EOF
+          $prs
+          EOF
+          exit "$failed"
