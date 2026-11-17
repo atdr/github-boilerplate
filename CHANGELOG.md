@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.3.0](https://github.com/atdr/github-boilerplate/compare/v1.2.0...v1.3.0) (2026-11-17)
+
+
+### Features
+
+* **auto-merge:** pilot auto-merge for owner PRs that Copilot approved ([#79](https://github.com/atdr/github-boilerplate/issues/79)) ([ea2f711](https://github.com/atdr/github-boilerplate/commit/ea2f711aaa2c89ba4ebbb877f7eebb76a0473748))
+* **python-ci:** audit runtime dependencies with pip-audit ([#74](https://github.com/atdr/github-boilerplate/issues/74)) ([eb14453](https://github.com/atdr/github-boilerplate/commit/eb14453197334509766424f71ec1ea5f0bbb5578))
+* **template:** run the release workflows on a daily schedule ([#72](https://github.com/atdr/github-boilerplate/issues/72)) ([6c3bac4](https://github.com/atdr/github-boilerplate/commit/6c3bac4039e51158ca6cb79d85c29c9b95e2e776))
+
+
+### Bug Fixes
+
+* **configure:** require a gate only where its job exists ([#73](https://github.com/atdr/github-boilerplate/issues/73)) ([070d8e6](https://github.com/atdr/github-boilerplate/commit/070d8e6065579afed09b0c3106d1a7d3ae27dd1f))
+
 ## [1.2.0](https://github.com/atdr/github-boilerplate/compare/v1.1.0...v1.2.0) (2026-11-16)
 
 
