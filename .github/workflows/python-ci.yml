@@ -291,15 +291,17 @@ jobs:
             # shellcheck disable=SC2086
             uv export $export_args -o "$out/export-runtime.txt"
             # The development tree is the runtime export plus one export per
-            # extra and per dependency group: uv refuses a single selection of
-            # them all when the project declares any of them conflicting.
+            # extra and per dependency group, and in a workspace per member and
+            # each of its extras and groups: uv refuses a single selection of
+            # them all when the project declares any of them conflicting. Each
+            # line the script prints is one selection's arguments.
             python -I "$RUNNER_TEMP/audit-requirements.py" --selections pyproject.toml \
               > "$out/selections"
             n=0
-            while read -r kind name <&3; do
+            while read -r -a selection <&3; do
               n=$((n + 1))
               # shellcheck disable=SC2086
-              uv export $export_args "$kind" "$name" -o "$out/export-development-$n.txt"
+              uv export $export_args "${selection[@]}" -o "$out/export-development-$n.txt"
             done 3< "$out/selections"
             python -I "$RUNNER_TEMP/audit-requirements.py" "$out/runtime" "$out/export-runtime.txt"
             python -I "$RUNNER_TEMP/audit-requirements.py" "$out/development" "$out"/export-*.txt

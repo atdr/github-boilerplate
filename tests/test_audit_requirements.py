@@ -190,6 +190,58 @@ def test_selections_is_empty_without_extras_groups_or_pyproject(tmp_path):
     assert selections(tmp_path, None) == []
 
 
+def member(root: Path, path: str, pyproject: str) -> None:
+    (root / path).mkdir(parents=True)
+    (root / path / "pyproject.toml").write_text(pyproject)
+
+
+def test_selections_reaches_into_a_virtual_workspace(tmp_path):
+    # A virtual root has no project, so its members hold the extras and
+    # groups; uv exports each as `--package NAME --extra X` or `--group G`.
+    root_pyproject = """
+[tool.uv.workspace]
+members = ["packages/*"]
+exclude = ["packages/skip"]
+
+[dependency-groups]
+lint = ["ruff"]
+"""
+    member(
+        tmp_path,
+        "packages/a",
+        '[project]\nname = "ws-a"\n\n[project.optional-dependencies]\nhttp = ["urllib3"]\n'
+        '\n[dependency-groups]\ndev = ["pytest"]\n',
+    )
+    member(tmp_path, "packages/b", '[project]\nname = "ws-b"\n\n[dependency-groups]\ndocs = ["jinja2"]\n')
+    member(tmp_path, "packages/skip", '[project]\nname = "ws-skip"\n\n[dependency-groups]\nx = ["certifi"]\n')
+    (tmp_path / "packages/notes").mkdir()
+    assert selections(tmp_path, root_pyproject) == [
+        "--group lint",
+        "--package ws-a",
+        "--package ws-a --extra http",
+        "--package ws-a --group dev",
+        "--package ws-b",
+        "--package ws-b --group docs",
+    ]
+
+
+def test_selections_leaves_a_workspace_root_project_to_its_own_lines(tmp_path):
+    # The root project's own extras need no --package, and a members glob
+    # matching it, or one member twice, adds nothing.
+    root_pyproject = """
+[project]
+name = "Root_App"
+
+[project.optional-dependencies]
+cli = ["click"]
+
+[tool.uv.workspace]
+members = [".", "libs/*", "libs/core"]
+"""
+    member(tmp_path, "libs/core", '[project]\nname = "core"\n')
+    assert selections(tmp_path, root_pyproject) == ["--extra cli", "--package core"]
+
+
 def test_requires_an_output_prefix_and_an_export(tmp_path):
     result = subprocess.run([sys.executable, "-I", str(SCRIPT)], capture_output=True, text=True)
     assert result.returncode == 2 and result.stderr.startswith("Usage: ")

@@ -29,10 +29,15 @@ the caller's pinned commit. Standard library only, apart from tomli on Python
 Writes nothing when no requirement is left, since pip-audit refuses an empty
 requirements file.
 
-With --selections, prints instead one line per extra and dependency group that
-PYPROJECT declares, `--extra NAME` or `--group NAME`, for the job to export
-each on its own and pass every export here together. uv refuses one export of
-`--all-extras --all-groups` when the project declares any of them conflicting.
+With --selections, prints instead one line per selection for the job to export
+on its own, its uv export arguments separated by spaces, and the job passes
+every export here together. uv refuses one export of `--all-extras
+--all-groups` when the project declares any of them conflicting. The lines are
+`--extra NAME` and `--group NAME` for each extra and dependency group PYPROJECT
+declares, then, in a uv workspace, `--package MEMBER` alone and with each of
+that member's extras and groups, for every member but the root project. A
+virtual workspace root has no project of its own, so its members are where
+those are.
 
 With --index-options, prints the index options in INSTALL, the job's `install`
 input, each followed by a NUL byte: index URLs, find links, trusted hosts and
@@ -137,17 +142,70 @@ def prepare(texts: list[str], label: str) -> list[str]:
     return ["\n".join(entries) + "\n" for entries in files]
 
 
-def selections(pyproject: Path) -> list[str]:
-    """`--extra NAME` for each extra, then `--group NAME` for each group."""
-    if not pyproject.is_file():
-        return []
-    data = tomllib.loads(pyproject.read_text())
+def own_selections(data: dict) -> list[list[str]]:
+    """`--extra NAME` for each extra a pyproject declares, then `--group NAME`."""
     extras = list(data.get("project", {}).get("optional-dependencies", {}))
     groups = list(data.get("dependency-groups", {}))
     # uv's older spelling of the dev group, which `--group dev` still selects.
     if data.get("tool", {}).get("uv", {}).get("dev-dependencies") and "dev" not in groups:
         groups.append("dev")
-    return [f"--extra {name}" for name in extras] + [f"--group {name}" for name in groups]
+    return [["--extra", name] for name in extras] + [["--group", name] for name in groups]
+
+
+def matches(root: Path, pattern: str) -> list[Path]:
+    """The directories a workspace glob names; Path.glob refuses "." itself."""
+    if pattern.strip("/") in ("", "."):
+        return [root]
+    return sorted(root.glob(pattern))
+
+
+def members(root: Path, workspace: dict) -> list[tuple[str, dict]]:
+    """Each workspace member's project name and pyproject, in glob order.
+
+    A member is a directory matching a `members` glob but no `exclude` glob,
+    with a pyproject.toml that names a project.
+    """
+    excluded = {
+        path.resolve() for pattern in workspace.get("exclude", []) for path in matches(root, pattern)
+    }
+    found: list[tuple[str, dict]] = []
+    for pattern in workspace.get("members", []):
+        for path in matches(root, pattern):
+            pyproject = path / "pyproject.toml"
+            if path.resolve() in excluded or not pyproject.is_file():
+                continue
+            data = tomllib.loads(pyproject.read_text())
+            name = data.get("project", {}).get("name")
+            if name:
+                found.append((name, data))
+    return found
+
+
+def selections(pyproject: Path) -> list[list[str]]:
+    """The uv export arguments of each selection, deduplicated, in order."""
+    if not pyproject.is_file():
+        return []
+    data = tomllib.loads(pyproject.read_text())
+    found = own_selections(data)
+    workspace = data.get("tool", {}).get("uv", {}).get("workspace")
+    if workspace is not None:
+        root_name = normalize(data.get("project", {}).get("name", ""))
+        for name, member in members(pyproject.parent, workspace):
+            if normalize(name) == root_name:
+                continue
+            package = ["--package", name]
+            found += [package] + [package + selection for selection in own_selections(member)]
+    unique: list[list[str]] = []
+    for selection in found:
+        if selection in unique:
+            continue
+        # One line of words for the shell to split: a name it would split
+        # differently is left out, loudly, rather than exported wrong.
+        if not all(re.fullmatch(NAME, word) or word.startswith("--") for word in selection):
+            print(f"::warning title=Not audited::Cannot export {selection!r} for the audit.", file=sys.stderr)
+            continue
+        unique.append(selection)
+    return unique
 
 
 # pip's options naming where packages come from, and the one flag among them.
@@ -179,8 +237,8 @@ def main(argv: list[str]) -> int:
         sys.stdout.write("".join(option + "\0" for option in index_options(argv[1])))
         return 0
     if len(argv) == 2 and argv[0] == "--selections":
-        for line in selections(Path(argv[1])):
-            print(line)
+        for selection in selections(Path(argv[1])):
+            print(" ".join(selection))
         return 0
     if len(argv) < 2 or argv[0].startswith("-"):
         print(__doc__.split("\n\n")[1], file=sys.stderr)

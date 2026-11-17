@@ -683,7 +683,9 @@ def test_python_ci_audit_resolves_runtime_without_extras_or_groups():
     # project declares any of them conflicting.
     assert "--all-extras" not in resolve and "--all-groups" not in resolve
     assert '--selections pyproject.toml' in resolve
-    assert 'uv export $export_args "$kind" "$name"' in resolve
+    # Each selections line is a list of arguments, workspace members included.
+    assert "while read -r -a selection <&3; do" in resolve
+    assert 'uv export $export_args "${selection[@]}"' in resolve
     assert '"$out/runtime" "$out/export-runtime.txt"' in resolve
     assert '"$out/development" "$out"/export-*.txt' in resolve
     assert 'python -m pip --python "$venv/bin/python" install --quiet "${index[@]}" -e .' in resolve
