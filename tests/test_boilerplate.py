@@ -684,7 +684,7 @@ def test_python_ci_audit_resolves_runtime_without_extras_or_groups():
     assert 'uv export $export_args "$kind" "$name"' in resolve
     assert '"$out/runtime" "$out/export-runtime.txt"' in resolve
     assert '"$out/development" "$out"/export-*.txt' in resolve
-    assert '"$out/runtime/bin/pip" install --quiet "${index[@]}" -e .' in resolve
+    assert 'python -m pip --python "$venv/bin/python" install --quiet "${index[@]}" -e .' in resolve
     # Fails rather than passing with nothing audited.
     assert "exit 1" in resolve
 
@@ -696,8 +696,42 @@ def test_python_ci_audit_runtime_install_takes_only_the_index_options():
     resolve = python_ci_audit_step("Resolve runtime and development dependencies")
     assert '--index-options "$INSTALL"' in resolve
     assert "while IFS= read -r -d '' option; do" in resolve
-    assert '"$out/runtime/bin/pip" install --quiet "${index[@]}" -e .' in resolve
+    assert 'python -m pip --python "$venv/bin/python" install --quiet "${index[@]}" -e .' in resolve
     assert resolve.count('eval "$INSTALL"') == 1
+
+
+def test_python_ci_audit_installs_the_runtime_tree_on_every_matrix_python():
+    # Without a lock a marker can make each Python's runtime tree different,
+    # so each gets a venv and a pip-audit run; with one, the export already
+    # covers every marker and only the audit's Python is set up.
+    job = yaml.safe_load((ROOT / ".github/workflows/python-ci.yml").read_text())["jobs"]["audit"]
+    steps = job["steps"]
+    versions = next(s for s in steps if s.get("id") == "versions")
+    assert versions["env"]["VERSIONS"] == "${{ inputs.python-versions }}"
+    assert versions["env"]["DEFAULT"] == "${{ inputs.python-version }}"
+    assert 'VERSIONS="[]"' in versions["run"]
+    setup = next(s for s in steps if str(s.get("uses", "")).startswith("actions/setup-python@"))
+    assert setup["with"]["python-version"] == "${{ steps.versions.outputs.list }}"
+    assert steps.index(versions) < steps.index(setup)
+    resolve = python_ci_audit_step("Resolve runtime and development dependencies")
+    assert 'done 3<<< "$VERSIONS"' in resolve
+    assert 'echo "--skip-editable --path $site" >> "$out/runtime.args"' in resolve
+    assert 'echo "--skip-editable --path $site" > "$out/development.args"' in resolve
+
+
+def test_python_ci_audit_lists_the_default_python_last():
+    # setup-python makes the last version its default, the audit's own.
+    job = yaml.safe_load((ROOT / ".github/workflows/python-ci.yml").read_text())["jobs"]["audit"]
+    run = next(s for s in job["steps"] if s.get("id") == "versions")["run"]
+    program = re.search(r"jq -r --arg default \"\$DEFAULT\" '([^']*)'", run).group(1)
+    result = subprocess.run(
+        ["jq", "-r", "--arg", "default", "3.13", program],
+        input='["3.11", "3.12", "3.13", "3.14"]',
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert result.stdout.split() == ["3.11", "3.12", "3.14", "3.13"]
 
 
 def test_python_ci_audit_prepares_uv_exports_with_the_fetched_script():

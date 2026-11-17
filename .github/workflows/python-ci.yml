@@ -186,8 +186,9 @@ jobs:
 
   # Separate from the matrix: an audit result reflects the advisory database at
   # a point in time, not the diff under review, and advisories belong to a
-  # package version, not to the Python running the audit. One interpreter, the
-  # one lint runs on.
+  # package version, not to the Python running the audit. It runs on the Python
+  # lint runs on, adding the matrix's only where an install has to be repeated
+  # per version (below).
   #
   # Runtime means [project].dependencies, without extras or dependency groups:
   # what `pip install <package>` gives a user. The development tree is
@@ -204,10 +205,12 @@ jobs:
   # - A package locked at several versions for different markers is split
   #   across several files, audited one at a time, since one requirements file
   #   can list it once.
-  # Without a lock, each tree is installed into a venv of its own
-  # (`pip install -e .` with only the index options of the `install` input, and
-  # the `install` input itself) and pip-audit reads what landed there; pip
-  # itself is uninstalled first, being the installer rather than a dependency.
+  # Without a lock, each tree is installed into a venv of its own and pip-audit
+  # reads what landed there: the runtime tree with `pip install -e .` and only
+  # the index options of the `install` input, once per Python the test matrix
+  # uses, and the development tree with the `install` input itself, on the
+  # audit's Python. Neither keeps the venv's own pip, being the installer
+  # rather than a dependency.
   # Either way, each line of $RUNNER_TEMP/audit/<tree>.args holds the arguments
   # of one pip-audit run.
   audit:
@@ -219,15 +222,35 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v7
-        with:
-          python-version: ${{ inputs.python-version }}
       - name: Use uv if the repo has a lockfile
         id: tool
         run: |
           if [ -f uv.lock ]; then
             echo "uv=true" >> "$GITHUB_OUTPUT"
           fi
+      # Without a lock, the runtime tree is installed once per Python the test
+      # matrix uses, since an environment marker can make each install a
+      # different tree. A uv export already covers every marker, so with a lock
+      # only the audit's own Python is needed. That one comes last, which makes
+      # it setup-python's default.
+      - name: List the Python versions to install
+        id: versions
+        env:
+          VERSIONS: ${{ inputs.python-versions }}
+          DEFAULT: ${{ inputs.python-version }}
+          UV: ${{ steps.tool.outputs.uv }}
+        run: |
+          if [ "$UV" = true ]; then
+            VERSIONS="[]"
+          fi
+          {
+            echo "list<<EOF"
+            jq -r --arg default "$DEFAULT" '(map(tostring) - [$default]) + [$default] | .[]' <<< "$VERSIONS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ steps.versions.outputs.list }}
       - if: steps.tool.outputs.uv == 'true'
         uses: astral-sh/setup-uv@v10.3.3
         with:
@@ -251,6 +274,7 @@ jobs:
         env:
           INSTALL: ${{ inputs.install }}
           UV: ${{ steps.tool.outputs.uv }}
+          VERSIONS: ${{ steps.versions.outputs.list }}
         run: |
           out="$RUNNER_TEMP/audit"
           mkdir -p "$out"
@@ -293,18 +317,40 @@ jobs:
             while IFS= read -r -d '' option; do
               index+=("$option")
             done < "$out/index-options"
-            python -m venv "$out/runtime"
-            "$out/runtime/bin/pip" install --quiet "${index[@]}" -e .
+            # One runtime venv per Python, each audited on its own.
+            : > "$out/runtime.args"
+            while read -r version <&3; do
+              minor=$(grep -oE '^[0-9]+\.[0-9]+t?' <<< "$version" || true)
+              python=""
+              for name in ${minor:+"python$minor"} "$version"; do
+                if command -v "$name" > /dev/null; then
+                  python=$name
+                  break
+                fi
+              done
+              if [ -z "$python" ]; then
+                echo "::warning title=Runtime tree not audited::No interpreter found for Python $version, so the runtime tree it installs is not audited."
+                continue
+              fi
+              # Without pip, and installed into by this interpreter's pip: a
+              # venv's own pip, and the setuptools Python 3.11 seeds beside
+              # it, are not dependencies.
+              venv="$out/runtime-$version"
+              "$python" -m venv --without-pip "$venv"
+              python -m pip --python "$venv/bin/python" install --quiet "${index[@]}" -e .
+              site=$("$venv/bin/python" -c 'import sysconfig; print(sysconfig.get_path("purelib"))')
+              echo "--skip-editable --path $site" >> "$out/runtime.args"
+            done 3<<< "$VERSIONS"
+            # The development tree on the audit's own Python only: it is
+            # advisory, and never reaches a user.
             python -m venv "$out/development"
             (
               export VIRTUAL_ENV="$out/development" PATH="$out/development/bin:$PATH"
               eval "$INSTALL"
             )
-            for tree in runtime development; do
-              "$out/$tree/bin/python" -m pip uninstall --quiet --yes pip
-              site=$("$out/$tree/bin/python" -c 'import sysconfig; print(sysconfig.get_path("purelib"))')
-              echo "--skip-editable --path $site" > "$out/$tree.args"
-            done
+            "$out/development/bin/python" -m pip uninstall --quiet --yes pip
+            site=$("$out/development/bin/python" -c 'import sysconfig; print(sysconfig.get_path("purelib"))')
+            echo "--skip-editable --path $site" > "$out/development.args"
           else
             echo "::error title=Nothing to audit::No uv.lock, pyproject.toml or setup.py, so there are no dependencies to audit. Set \`audit: false\` if this repo has none."
             exit 1
