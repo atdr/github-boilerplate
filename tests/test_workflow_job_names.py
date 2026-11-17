@@ -176,6 +176,11 @@ jobs:
     assert job_names(workflow) == ["plain"]
 
 
+@pytest.mark.parametrize("value", ['"! lint"', "'& lint'", '"*lint"', "'| lint'"])
+def test_quoted_names_may_start_with_an_indicator(value):
+    assert job_names(f"jobs:\n  g:\n    name: {value}\n") == [value[1:-1]]
+
+
 def test_single_quoted_doubled_quote_is_one_quote():
     assert job_names("jobs:\n  g:\n    name: 'it''s'\n") == ["it's"]
 

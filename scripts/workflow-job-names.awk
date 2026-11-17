@@ -121,7 +121,8 @@ depth == prop_indent {
 		raw = substr(line, RLENGTH + 1)
 		sub(/^[ \t]+/, "", raw)
 		value = unquote(raw)
-		if (value == "" || value ~ /^[|>&*!]/)
+		# Indicators count only before any quote: "! lint" is a plain name.
+		if (value == "" || raw ~ /^[|>&*!]/)
 			bad = "name: is not a one line value"
 		# GitHub evaluates the expression, so the check name is not this text.
 		else if (value ~ /\$\{\{/)
