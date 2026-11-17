@@ -75,11 +75,13 @@ for path in $workflows; do
 	# Decoded whole and matched with case, not piped into grep -q: under
 	# pipefail an early grep exit can SIGPIPE the decoder and read as no match.
 	decoded=$(printf '%s' "$content" | base64 --decode)
-	# Which gate this file's jobs report, if it is one of the gate workflows.
-	stem=${path##*/}
-	stem=${stem%.yml}
+	# Whether a gate workflow has the job that reports its gate. A job the awk
+	# script cannot read for certain prints `?...`; with the gate not found
+	# otherwise, stop before changing anything rather than guess either way.
 	case "$path" in
-	.github/workflows/*.yml)
+	.github/workflows/pull-request.yml | .github/workflows/checks.yml | .github/workflows/ci.yml)
+		stem=${path##*/}
+		stem=${stem%.yml}
 		job_names=$(printf '%s\n' "$decoded" | awk -f "$here/scripts/workflow-job-names.awk")
 		case "
 $job_names
@@ -88,6 +90,13 @@ $job_names
 $stem gate
 "*) gate_jobs="${gate_jobs:-}$stem gate
 " ;;
+		*"
+?"*)
+			echo "cannot tell whether $path has a job named \"$stem gate\":" >&2
+			printf '%s\n' "$job_names" | sed -n 's/^?/  /p' >&2
+			echo "Write each job's name: as one line in a block mapping, then rerun." >&2
+			exit 1
+			;;
 		esac
 		;;
 	esac
@@ -247,7 +256,7 @@ if [ "$visibility" = public ]; then
 		echo "requires no status checks: no workflow reports a gate"
 	fi
 	for file in $gateless; do
-		echo "not required: $file has no job named \"${file%.yml} gate\""
+		echo "not required: no job in $file reports \"${file%.yml} gate\""
 	done
 	if [ "$admin_bypass" = true ]; then
 		echo "admins may bypass the ruleset: the repo commits .github/admin-bypass"
