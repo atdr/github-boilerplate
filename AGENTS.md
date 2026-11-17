@@ -64,11 +64,12 @@ scripts/configure.sh <owner/repo> [--apply|--diff]   # dry run by default
   need it ported and any local divergence that rules out a plain copy. Start
   from the dependency graph's dependents
   (`https://github.com/atdr/github-boilerplate/network/dependents`, HTML only,
-  no API), and work out which overlay each was built from. A repo needs the
-  change where a changed or added path, resolved as `apply.sh` would for its
-  overlay (the overlay's file over `core`'s), is missing or differs from the new
-  template version, or where a path the template removed for its overlay is
-  still present. The graph lists public repos only, so say so.
+  no API). Clone each and run `scripts/apply.sh <overlay> <clone> --diff` from
+  the changed checkout: it resolves and renders the files as an apply would, and
+  lists the missing ones. A repo needs the change where a path the change
+  touches is missing or differs there. `--diff` cannot see removals, so also
+  name a repo that still has a path the change removed for its overlay. The
+  graph lists public repos only, so say so.
 - **Placeholders:** `__OWNER__` and `__REPO__` in template files, filled by
   `apply.sh`.
 - **Scripts** target bash 3.2 (macOS's `/bin/bash`): no `mapfile`, no
