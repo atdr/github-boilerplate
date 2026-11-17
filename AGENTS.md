@@ -67,7 +67,8 @@ scripts/configure.sh <owner/repo> [--apply|--diff]   # dry run by default
   no API), and work out which overlay each was built from. A repo needs the
   change where a changed or added path, resolved as `apply.sh` would for its
   overlay (the overlay's file over `core`'s), is missing or differs from the new
-  template version. The graph lists public repos only, so say so.
+  template version, or where a path the template removed for its overlay is
+  still present. The graph lists public repos only, so say so.
 - **Placeholders:** `__OWNER__` and `__REPO__` in template files, filled by
   `apply.sh`.
 - **Scripts** target bash 3.2 (macOS's `/bin/bash`): no `mapfile`, no
