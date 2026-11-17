@@ -60,12 +60,14 @@ scripts/configure.sh <owner/repo> [--apply|--diff]   # dry run by default
 - **Copied files need porting:** a template change other than a pin reaches
   existing repos only when someone copies it across, and a release bump in those
   repos does not bring it. Whenever a change touches `template/`, warn the user
-  prominently in the session, not in the PR body, naming each repo that carries
-  a changed file and will need it ported, plus any local divergence that rules
-  out a plain copy. Start from the dependency graph's dependents
+  prominently in the session, not in the PR body, naming each repo that will
+  need it ported: one that carries a changed file, or one built from the
+  affected overlay (or any, for `core`) that lacks a newly added file. Name any
+  local divergence that rules out a plain copy too. Start from the dependency
+  graph's dependents
   (`https://github.com/atdr/github-boilerplate/network/dependents`, HTML only,
-  no API), then fetch the changed paths from each repo to compare. The graph
-  lists public repos only, so say so.
+  no API), then fetch the changed and added paths from each repo to compare. The
+  graph lists public repos only, so say so.
 - **Placeholders:** `__OWNER__` and `__REPO__` in template files, filled by
   `apply.sh`.
 - **Scripts** target bash 3.2 (macOS's `/bin/bash`): no `mapfile`, no
