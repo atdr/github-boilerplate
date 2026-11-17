@@ -41,6 +41,10 @@ on:
         description: Run pytest under coverage and upload coverage.xml to Codecov
         type: boolean
         default: true
+      audit:
+        description: Run pip-audit (runtime blocking, development advisory)
+        type: boolean
+        default: true
     secrets:
       CODECOV_TOKEN:
         required: false
@@ -179,3 +183,118 @@ jobs:
           files: ./coverage.xml
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
+
+  # Separate from the matrix: an audit result reflects the advisory database at
+  # a point in time, not the diff under review, and advisories do not depend on
+  # the Python version. One interpreter, the one lint runs on.
+  #
+  # Runtime means [project].dependencies, without extras or dependency groups:
+  # what `pip install <package>` gives a user. The development tree is
+  # everything the repo can install. With a uv.lock both come from the lock
+  # (`uv export`), hashed, so pip-audit checks the pinned versions as they are
+  # without resolving anything. Without one, each is installed into a venv of
+  # its own (`pip install -e .` and the `install` input) and pip-audit reads
+  # what landed there; pip itself is uninstalled first, being the installer
+  # rather than a dependency.
+  audit:
+    name: dependency audit
+    if: inputs.audit
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ inputs.python-version }}
+      - name: Use uv if the repo has a lockfile
+        id: tool
+        run: |
+          if [ -f uv.lock ]; then
+            echo "uv=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.tool.outputs.uv == 'true'
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          python-version: ${{ inputs.python-version }}
+      # The pip-audit pin lives in this repository, where Dependabot bumps it,
+      # so it is fetched at the commit the caller pinned.
+      - name: Fetch the pinned pip-audit requirements
+        env:
+          # job.workflow_sha is this workflow's own commit (the one the caller's
+          # @ref resolved to), not the caller's.
+          REF: ${{ job.workflow_sha }}
+        run: |
+          curl --fail --silent --show-error --retry 3 \
+            -o "$RUNNER_TEMP/requirements-audit.txt" \
+            "https://raw.githubusercontent.com/atdr/github-boilerplate/$REF/scripts/requirements-audit.txt"
+      # Into the runner's interpreter, never into what is audited below.
+      - run: pip install -r "$RUNNER_TEMP/requirements-audit.txt"
+      - name: Resolve runtime and development dependencies
+        env:
+          INSTALL: ${{ inputs.install }}
+          UV: ${{ steps.tool.outputs.uv }}
+        run: |
+          out="$RUNNER_TEMP/audit"
+          mkdir -p "$out"
+          if [ "$UV" = true ]; then
+            # --no-emit-local leaves out the project and any path dependency,
+            # which are not on PyPI to audit.
+            uv export --locked --quiet --format requirements-txt --no-emit-local \
+              --no-default-groups -o "$out/runtime.txt"
+            uv export --locked --quiet --format requirements-txt --no-emit-local \
+              --all-extras --all-groups -o "$out/development.txt"
+            for tree in runtime development; do
+              # pip-audit refuses a requirements file with nothing in it.
+              if grep -q '^[^#[:space:]]' "$out/$tree.txt"; then
+                args="--disable-pip -r $out/$tree.txt"
+              else
+                args=""
+              fi
+              echo "$(echo "$tree" | tr '[:lower:]' '[:upper:]')_ARGS=$args" >> "$GITHUB_ENV"
+            done
+          elif [ -f pyproject.toml ] || [ -f setup.py ]; then
+            python -m venv "$out/runtime"
+            "$out/runtime/bin/pip" install --quiet -e .
+            python -m venv "$out/development"
+            (
+              export VIRTUAL_ENV="$out/development" PATH="$out/development/bin:$PATH"
+              eval "$INSTALL"
+            )
+            for tree in runtime development; do
+              "$out/$tree/bin/python" -m pip uninstall --quiet --yes pip
+              site=$("$out/$tree/bin/python" -c 'import sysconfig; print(sysconfig.get_path("purelib"))')
+              echo "$(echo "$tree" | tr '[:lower:]' '[:upper:]')_ARGS=--skip-editable --path $site" >> "$GITHUB_ENV"
+            done
+          else
+            echo "::error title=Nothing to audit::No uv.lock, pyproject.toml or setup.py, so there are no dependencies to audit. Set \`audit: false\` if this repo has none."
+            exit 1
+          fi
+      # Blocking: runtime dependencies are the ones that reach a user. pip-audit
+      # has no severity threshold, so any known advisory fails.
+      - name: audit runtime dependencies
+        run: |
+          if [ -z "$RUNTIME_ARGS" ]; then
+            echo "No runtime dependencies to audit."
+            exit 0
+          fi
+          # Unquoted on purpose: it is a list of arguments.
+          # shellcheck disable=SC2086
+          pip-audit --progress-spinner off $RUNTIME_ARGS
+      # Advisory: development tooling never ships. The step swallows the exit
+      # code itself rather than using continue-on-error, which would leave the
+      # runner's bare "Process completed with exit code 1" as the only
+      # annotation. ::error rather than ::warning, so it is not scrolled past
+      # with the deprecation notices; a Dependabot bump clears it.
+      - name: audit development tree (advisory)
+        run: |
+          if [ -z "$DEVELOPMENT_ARGS" ]; then
+            echo "No development dependencies to audit."
+            exit 0
+          fi
+          # Unquoted on purpose: it is a list of arguments.
+          # shellcheck disable=SC2086
+          if ! pip-audit --progress-spinner off $DEVELOPMENT_ARGS; then
+            echo "::error title=Development dependency advisory::pip-audit found an advisory in the development tree. This does not block: development dependencies never reach a user, and the job is green on purpose. Dependabot alerts are the signal of record; the report above says which package."
+          fi

@@ -1,0 +1,4 @@
+# Installed by .github/workflows/python-ci.yml's audit job, in the caller's
+# repo. Kept here rather than inline in the workflow so Dependabot bumps it by
+# pull request.
+pip-audit==2.10.1

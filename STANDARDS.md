@@ -239,11 +239,10 @@ repository variable, because a job-level `if:` can read `vars` but not
   others, reporting a neutral "configurations not found" with no analysis, and a
   ruleset that requires code scanning results blocks a merge whose results never
   arrive. A dependency bump changes manifests and lock files, not the source
-  CodeQL reads. Dependabot alerts and the cooldown cover it, plus, in Node
-  repos, `node-ci`'s `npm audit`, which blocks `ci gate` on a production
-  advisory. Python CI has no audit yet (see the table below), so there the
-  alerts and the cooldown are all of it. Any CodeQL alert still surfaces from
-  the scan of `main`.
+  CodeQL reads. Dependabot alerts and the cooldown cover it, plus the dependency
+  audit, which blocks `ci gate` on a production advisory: `node-ci`'s
+  `npm audit` and `python-ci`'s `pip-audit` (see the table below). Any CodeQL
+  alert still surfaces from the scan of `main`.
 - **Adding auto-merge to a repo: settings first.** Run `configure.sh --apply`
   before merging the PR that adds `auto-merge.yml`. That merge changes
   `dependabot.yml`'s pins, Dependabot opens PRs within seconds, and a job that
@@ -347,5 +346,5 @@ comments) is never hard wrapped: GitHub renders each newline as a line break.
 | ----------- | ------------------------------- | ---------------------------------- | ------------------------------------ |
 | Local hooks | husky                           | pre-commit                         | pre-commit                           |
 | Formatter   | Prettier, `printWidth: 100`     | ruff format                        | tex-fmt                              |
-| Audit       | `npm audit`, prod blocking      | not yet                            | n/a                                  |
+| Audit       | `npm audit`, prod blocking      | `pip-audit`, runtime blocking      | n/a                                  |
 | Release     | release-please `node`, npm OIDC | release-please `python`, PyPI OIDC | build releases from atdr/latex-build |

@@ -628,8 +628,75 @@ def test_python_ci_runs_every_tool_through_the_chosen_installer():
             command = str(step.get("run", ""))
             if command.split()[:1] in (["ruff"], ["pytest"]):
                 raise AssertionError(f"{job_id}: {command!r} bypasses $RUN")
+        # The audit reads the lock with `uv export` rather than installing it.
+        if job_id == "audit":
+            continue
         install = next(st for st in steps if st.get("name") == "Install")
         assert "uv sync --locked $UV_SYNC_ARGS" in install["run"], job_id
+
+
+def python_ci_audit_step(name: str) -> str:
+    job = yaml.safe_load((ROOT / ".github/workflows/python-ci.yml").read_text())["jobs"]["audit"]
+    return next(s["run"] for s in job["steps"] if s.get("name") == name)
+
+
+def test_python_ci_audits_in_its_own_job_like_node_ci():
+    # Same input name and default as node-ci, so a caller opts out of either
+    # the same way, and a job of its own outside the version matrix.
+    python = yaml.safe_load((ROOT / ".github/workflows/python-ci.yml").read_text())
+    node = yaml.safe_load((ROOT / ".github/workflows/node-ci.yml").read_text())
+    for workflow in (python, node):
+        audit = workflow[True]["workflow_call"]["inputs"]["audit"]
+        assert audit["type"] == "boolean" and audit["default"] is True
+        job = workflow["jobs"]["audit"]
+        assert job["if"] == "inputs.audit"
+        assert job["name"] == "dependency audit"
+        assert "strategy" not in job
+        assert "matrix" not in json.dumps(job)
+
+
+def test_python_ci_blocks_on_runtime_and_reports_development_advisories():
+    runtime = python_ci_audit_step("audit runtime dependencies")
+    assert "pip-audit" in runtime and "$RUNTIME_ARGS" in runtime
+    assert "if !" not in runtime and "|| true" not in runtime
+    development = python_ci_audit_step("audit development tree (advisory)")
+    assert "if ! pip-audit" in development and "$DEVELOPMENT_ARGS" in development
+    assert "::error title=Development dependency advisory::" in development
+    job = yaml.safe_load((ROOT / ".github/workflows/python-ci.yml").read_text())["jobs"]["audit"]
+    assert not any(s.get("continue-on-error") for s in job["steps"])
+
+
+def test_python_ci_audit_resolves_runtime_without_extras_or_groups():
+    resolve = python_ci_audit_step("Resolve runtime and development dependencies")
+    runtime, development = re.findall(r"uv export --locked[^\n]*\n[^\n]*", resolve)
+    assert "--no-default-groups" in runtime and "--all-extras" not in runtime
+    assert "--all-extras --all-groups" in development
+    assert '"$out/runtime/bin/pip" install --quiet -e .' in resolve
+    # Fails rather than passing with nothing audited.
+    assert "exit 1" in resolve
+
+
+def test_python_ci_audit_installs_the_pinned_pip_audit():
+    pins = (ROOT / "scripts/requirements-audit.txt").read_text()
+    assert re.search(r"^pip-audit==\S+$", pins, re.M)
+    text = (ROOT / ".github/workflows/python-ci.yml").read_text()
+    assert "REF: ${{ job.workflow_sha }}" in text
+    assert "$REF/scripts/requirements-audit.txt" in text
+    # Dependabot's /scripts entry is what keeps the pin current.
+    config = yaml.safe_load((ROOT / ".github/dependabot.yml").read_text())
+    assert any(
+        u["package-ecosystem"] == "pip" and u.get("directory") == "/scripts" for u in config["updates"]
+    )
+
+
+def test_template_ci_gate_needs_the_python_ci_job():
+    # A failed job inside a reusable workflow fails the calling job, so the
+    # audit fails `ci gate` through the job that calls python-ci.
+    jobs = yaml.safe_load((ROOT / "template/python/.github/workflows/ci.yml").read_text())["jobs"]
+    (caller,) = [i for i, j in jobs.items() if "/python-ci.yml@" in str(j.get("uses", ""))]
+    assert "audit" not in (jobs[caller].get("with") or {})
+    gate = next(j for j in jobs.values() if j.get("name") == "ci gate")
+    assert caller in gate["needs"]
 
 
 def test_uv_tools_run_in_the_synced_environment():
