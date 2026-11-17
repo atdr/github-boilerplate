@@ -184,11 +184,11 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 
-  # Separate from the matrix: an audit result reflects the advisory database at
-  # a point in time, not the diff under review, and advisories belong to a
-  # package version, not to the Python running the audit. It runs on the Python
-  # lint runs on, adding the matrix's only where an install has to be repeated
-  # per version (below).
+  # Separate from the test matrix: an audit result reflects the advisory
+  # database at a point in time, not the diff under review, and advisories
+  # belong to a package version, not to the Python running the audit. One
+  # interpreter, the one lint runs on, except for the runtime tree of a repo
+  # without a uv.lock (runtime-audit, below).
   #
   # Runtime means [project].dependencies, without extras or dependency groups:
   # what `pip install <package>` gives a user. The development tree is
@@ -205,14 +205,30 @@ jobs:
   # - A package locked at several versions for different markers is split
   #   across several files, audited one at a time, since one requirements file
   #   can list it once.
-  # Without a lock, each tree is installed into a venv of its own and pip-audit
-  # reads what landed there: the runtime tree with `pip install -e .` and only
-  # the index options of the `install` input, once per Python the test matrix
-  # uses, and the development tree with the `install` input itself, on the
-  # audit's Python. Neither keeps the venv's own pip, being the installer
-  # rather than a dependency.
-  # Either way, each line of $RUNNER_TEMP/audit/<tree>.args holds the arguments
-  # of one pip-audit run.
+  # Without a lock, the development tree is installed here with the `install`
+  # input into a venv of its own, and pip-audit reads what landed there. pip is
+  # uninstalled from it first, being the installer rather than a dependency.
+  # Each line of $RUNNER_TEMP/audit/<tree>.args holds the arguments of one
+  # pip-audit run.
+  # Whether the repo has a uv.lock, which decides whether runtime-audit runs.
+  audit-plan:
+    name: audit plan
+    if: inputs.audit
+    timeout-minutes: 5
+    runs-on: ubuntu-latest
+    outputs:
+      lock: ${{ steps.tool.outputs.uv }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Use uv if the repo has a lockfile
+        id: tool
+        run: |
+          if [ -f uv.lock ]; then
+            echo "uv=true" >> "$GITHUB_OUTPUT"
+          fi
+
   audit:
     name: dependency audit
     if: inputs.audit
@@ -228,29 +244,9 @@ jobs:
           if [ -f uv.lock ]; then
             echo "uv=true" >> "$GITHUB_OUTPUT"
           fi
-      # Without a lock, the runtime tree is installed once per Python the test
-      # matrix uses, since an environment marker can make each install a
-      # different tree. A uv export already covers every marker, so with a lock
-      # only the audit's own Python is needed. That one comes last, which makes
-      # it setup-python's default.
-      - name: List the Python versions to install
-        id: versions
-        env:
-          VERSIONS: ${{ inputs.python-versions }}
-          DEFAULT: ${{ inputs.python-version }}
-          UV: ${{ steps.tool.outputs.uv }}
-        run: |
-          if [ "$UV" = true ]; then
-            VERSIONS="[]"
-          fi
-          {
-            echo "list<<EOF"
-            jq -r --arg default "$DEFAULT" '(map(tostring) - [$default]) + [$default] | .[]' <<< "$VERSIONS"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
       - uses: actions/setup-python@v7
         with:
-          python-version: ${{ steps.versions.outputs.list }}
+          python-version: ${{ inputs.python-version }}
       - if: steps.tool.outputs.uv == 'true'
         uses: astral-sh/setup-uv@v10.3.3
         with:
@@ -274,7 +270,6 @@ jobs:
         env:
           INSTALL: ${{ inputs.install }}
           UV: ${{ steps.tool.outputs.uv }}
-          VERSIONS: ${{ steps.versions.outputs.list }}
         run: |
           out="$RUNNER_TEMP/audit"
           mkdir -p "$out"
@@ -315,39 +310,7 @@ jobs:
               done > "$out/$tree.args"
             done
           elif [ -f pyproject.toml ] || [ -f setup.py ]; then
-            # The runtime tree resolves from the same indexes as `install`, so
-            # the script picks its index options out of it, and nothing else:
-            # no extras, and no other part of it runs.
-            python -I "$RUNNER_TEMP/audit-requirements.py" --index-options "$INSTALL" \
-              > "$out/index-options"
-            index=()
-            while IFS= read -r -d '' option; do
-              index+=("$option")
-            done < "$out/index-options"
-            # One runtime venv per Python, each audited on its own.
-            : > "$out/runtime.args"
-            while read -r version <&3; do
-              minor=$(grep -oE '^[0-9]+\.[0-9]+t?' <<< "$version" || true)
-              python=""
-              for name in ${minor:+"python$minor"} "$version"; do
-                if command -v "$name" > /dev/null; then
-                  python=$name
-                  break
-                fi
-              done
-              if [ -z "$python" ]; then
-                echo "::warning title=Runtime tree not audited::No interpreter found for Python $version, so the runtime tree it installs is not audited."
-                continue
-              fi
-              # Without pip, and installed into by this interpreter's pip: a
-              # venv's own pip, and the setuptools Python 3.11 seeds beside
-              # it, are not dependencies.
-              venv="$out/runtime-$version"
-              "$python" -m venv --without-pip "$venv"
-              python -m pip --python "$venv/bin/python" install --quiet "${index[@]}" -e .
-              site=$("$venv/bin/python" -c 'import sysconfig; print(sysconfig.get_path("purelib"))')
-              echo "--skip-editable --path $site" >> "$out/runtime.args"
-            done 3<<< "$VERSIONS"
+            # The runtime tree is runtime-audit's, one job per Python.
             # The development tree on the audit's own Python only: it is
             # advisory, and never reaches a user.
             python -m venv "$out/development"
@@ -363,9 +326,12 @@ jobs:
             exit 1
           fi
       # Blocking: runtime dependencies are the ones that reach a user. pip-audit
-      # has no severity threshold, so any known advisory fails.
+      # has no severity threshold, so any known advisory fails. Only with a
+      # lock: without one, runtime-audit covers the runtime tree.
       - name: audit runtime dependencies
+        if: steps.tool.outputs.uv == 'true'
         run: |
+          # An export with nothing left in it, which pip-audit would refuse.
           if [ ! -s "$RUNNER_TEMP/audit/runtime.args" ]; then
             echo "No runtime dependencies to audit."
             exit 0
@@ -399,3 +365,79 @@ jobs:
           if [ "$status" != 0 ]; then
             echo "::error title=Development dependency advisory::pip-audit found an advisory in the development tree. This does not block: development dependencies never reach a user, and the job is green on purpose. Dependabot alerts are the signal of record; the report above says which package."
           fi
+
+  # Without a uv.lock, the runtime tree is whatever pip installs, and an
+  # environment marker can make that differ by Python, so it is installed and
+  # audited once per version the test matrix runs. A job per version, so
+  # setup-python resolves each entry itself (3.x, a range, pypy3.10, 3.13t)
+  # and python-path names the interpreter it chose. A uv export already covers
+  # every marker, so with a lock this job is skipped. Blocking, like the
+  # runtime audit above: an entry setup-python cannot install, or a tree that
+  # cannot be installed or read, fails its job rather than passing unaudited.
+  runtime-audit:
+    # Interpolated, not a fixed string: a matrix job with a static name produces
+    # several checks called the same thing.
+    name: runtime audit ${{ matrix.python-version }}
+    needs: audit-plan
+    if: inputs.audit && needs.audit-plan.outputs.lock != 'true'
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ${{ fromJSON(inputs.python-versions) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        id: python
+        with:
+          python-version: ${{ matrix.python-version }}
+      # As in the audit job: pinned in this repository, fetched at the commit
+      # the caller pinned.
+      - name: Fetch the pinned pip-audit requirements and script
+        env:
+          REF: ${{ job.workflow_sha }}
+        run: |
+          for file in requirements-audit.txt audit-requirements.py; do
+            curl --fail --silent --show-error --retry 3 -o "$RUNNER_TEMP/$file" \
+              "https://raw.githubusercontent.com/atdr/github-boilerplate/$REF/scripts/$file"
+          done
+      # Into the interpreter setup-python installed, never into the venv
+      # audited below.
+      - run: pip install -r "$RUNNER_TEMP/requirements-audit.txt"
+      - name: Resolve runtime dependencies
+        env:
+          INSTALL: ${{ inputs.install }}
+          PYTHON: ${{ steps.python.outputs.python-path }}
+        run: |
+          if [ ! -f pyproject.toml ] && [ ! -f setup.py ]; then
+            echo "::error title=Nothing to audit::No uv.lock, pyproject.toml or setup.py, so there are no dependencies to audit. Set \`audit: false\` if this repo has none."
+            exit 1
+          fi
+          out="$RUNNER_TEMP/audit"
+          mkdir -p "$out"
+          # The runtime tree resolves from the same indexes as `install`, so
+          # the script picks its index options out of it, and nothing else:
+          # no extras, and no other part of it runs.
+          "$PYTHON" -I "$RUNNER_TEMP/audit-requirements.py" --index-options "$INSTALL" \
+            > "$out/index-options"
+          index=()
+          while IFS= read -r -d '' option; do
+            index+=("$option")
+          done < "$out/index-options"
+          # Without pip, and installed into by the interpreter's own pip: a
+          # venv's pip, and the setuptools Python 3.11 seeds beside it, are
+          # not dependencies.
+          "$PYTHON" -m venv --without-pip "$out/runtime"
+          "$PYTHON" -m pip --python "$out/runtime/bin/python" install --quiet "${index[@]}" -e .
+          site=$("$out/runtime/bin/python" -c 'import sysconfig; print(sysconfig.get_path("purelib"))')
+          echo "SITE=$site" >> "$GITHUB_ENV"
+      - name: audit runtime dependencies
+        run: |
+          if [ -z "$SITE" ] || [ ! -d "$SITE" ]; then
+            echo "::error title=Runtime tree not audited::The runtime venv's site-packages is missing, so nothing was audited."
+            exit 1
+          fi
+          pip-audit --progress-spinner off --skip-editable --path "$SITE"
