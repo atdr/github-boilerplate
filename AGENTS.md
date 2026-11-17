@@ -67,9 +67,11 @@ scripts/configure.sh <owner/repo> [--apply|--diff]   # dry run by default
   no API). Clone each and run `scripts/apply.sh <overlay> <clone> --diff` from
   the changed checkout: it resolves and renders the files as an apply would, and
   lists the missing ones. A repo needs the change where a path the change
-  touches is missing or differs there. `--diff` cannot see removals, so also
-  name a repo that still has a path the change removed for its overlay. The
-  graph lists public repos only, so say so.
+  touches is missing or differs there. Run it from the base commit too: a path
+  that already differed there has diverged locally, so a plain copy would
+  overwrite the repo's own edits. `--diff` cannot see removals, so also name a
+  repo that still has a path the change removed for its overlay. The graph lists
+  public repos only, so say so.
 - **Placeholders:** `__OWNER__` and `__REPO__` in template files, filled by
   `apply.sh`.
 - **Scripts** target bash 3.2 (macOS's `/bin/bash`): no `mapfile`, no
