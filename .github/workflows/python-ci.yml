@@ -185,21 +185,30 @@ jobs:
           fail_ci_if_error: false
 
   # Separate from the matrix: an audit result reflects the advisory database at
-  # a point in time, not the diff under review, and advisories do not depend on
-  # the Python version. One interpreter, the one lint runs on.
+  # a point in time, not the diff under review, and advisories belong to a
+  # package version, not to the Python running the audit. One interpreter, the
+  # one lint runs on.
   #
   # Runtime means [project].dependencies, without extras or dependency groups:
   # what `pip install <package>` gives a user. The development tree is
   # everything the repo can install. With a uv.lock both come from the lock
   # (`uv export`), hashed, and scripts/audit-requirements.py turns each export
-  # into pip-audit's input: hashes kept, so pip-audit checks the pinned versions
-  # as they are without resolving anything, and direct URL requirements (Git
-  # dependencies, say) dropped with a notice, since they have no version to
-  # look up and no hashes. Without a lock, each tree is installed into a venv of
-  # its own (`pip install -e .` and the `install` input) and pip-audit reads
-  # what landed there; pip itself is uninstalled first, being the installer
-  # rather than a dependency. Either way, each line of
-  # $RUNNER_TEMP/audit/<tree>.args holds the arguments of one pip-audit run.
+  # into pip-audit's input:
+  # - Hashes are kept, so pip-audit checks the pinned versions as they are
+  #   without resolving anything.
+  # - Direct URL requirements (Git dependencies, say) are dropped with a
+  #   notice: no version to look up, and no hashes.
+  # - Environment markers are stripped. pip-audit would evaluate them against
+  #   this one interpreter and skip a pin that only another tested Python
+  #   installs.
+  # - A package locked at several versions for different markers is split
+  #   across several files, audited one at a time, since one requirements file
+  #   can list it once.
+  # Without a lock, each tree is installed into a venv of its own
+  # (`pip install -e .` and the `install` input) and pip-audit reads what landed
+  # there; pip itself is uninstalled first, being the installer rather than a
+  # dependency. Either way, each line of $RUNNER_TEMP/audit/<tree>.args holds
+  # the arguments of one pip-audit run.
   audit:
     name: dependency audit
     if: inputs.audit

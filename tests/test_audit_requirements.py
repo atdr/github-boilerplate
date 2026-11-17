@@ -81,6 +81,51 @@ def test_drops_direct_url_requirements_with_a_notice(tmp_path):
     assert "github.com" not in result.stdout
 
 
+def test_strips_environment_markers(tmp_path):
+    # pip-audit skips a requirement whose marker is false on its own Python.
+    text = export(
+        "requests==2.25.0 ; python_full_version < '3.13' \\",
+        HASH_A,
+        "colorama==0.4.6 ; sys_platform == 'win32' \\",
+        HASH_B,
+        "idna==2.10;python_version<'3.13'",
+    )
+    _, written = run(tmp_path, text)
+    assert written == {
+        "runtime-1.txt": f"requests==2.25.0 \\\n{HASH_A}\ncolorama==0.4.6 \\\n{HASH_B}\nidna==2.10\n"
+    }
+
+
+def test_splits_several_versions_of_one_package_across_files(tmp_path):
+    text = export(
+        "click==8.3.1 \\",
+        HASH_A,
+        "idna==2.10 ; python_full_version < '3.13' \\",
+        HASH_A,
+        "idna==3.20 ; python_full_version >= '3.13' \\",
+        HASH_B,
+        "requests==2.25.0 ; python_full_version < '3.12' \\",
+        HASH_A,
+        "requests==2.31.0 ; python_full_version == '3.12.*' \\",
+        HASH_B,
+        "Requests==2.34.2 ; python_full_version >= '3.13' \\",
+        HASH_B,
+    )
+    _, written = run(tmp_path, text)
+    assert written == {
+        "runtime-1.txt": f"click==8.3.1 \\\n{HASH_A}\nidna==2.10 \\\n{HASH_A}\nrequests==2.25.0 \\\n{HASH_A}\n",
+        "runtime-2.txt": f"idna==3.20 \\\n{HASH_B}\nrequests==2.31.0 \\\n{HASH_B}\n",
+        "runtime-3.txt": f"Requests==2.34.2 \\\n{HASH_B}\n",
+    }
+
+
+def test_keeps_one_version_once_across_markers_and_exports(tmp_path):
+    first = export("certifi==2026.10.23 ; python_full_version < '3.13' \\", HASH_A)
+    second = export("certifi==2026.10.23 \\", HASH_A, "pytest==9.2.0 \\", HASH_B)
+    _, written = run(tmp_path, first, second)
+    assert written == {"runtime-1.txt": f"certifi==2026.10.23 \\\n{HASH_A}\npytest==9.2.0 \\\n{HASH_B}\n"}
+
+
 def test_writes_nothing_when_nothing_is_left_to_audit(tmp_path):
     # pip-audit refuses an empty requirements file.
     result, written = run(tmp_path, export())
