@@ -619,6 +619,10 @@ def test_python_ci_runs_every_tool_through_the_chosen_installer():
     # behind $RUN, which is `uv run --locked` with a lock and empty without.
     workflow = yaml.safe_load((ROOT / ".github/workflows/python-ci.yml").read_text())
     for job_id, job in workflow["jobs"].items():
+        # Neither runs a tool of the project: one looks for uv.lock, the other
+        # only runs where there is none.
+        if job_id in ("audit-plan", "runtime-audit"):
+            continue
         steps = job["steps"]
         names = [s.get("name") for s in steps]
         assert "Use uv if the repo has a lockfile" in names, job_id
@@ -628,8 +632,161 @@ def test_python_ci_runs_every_tool_through_the_chosen_installer():
             command = str(step.get("run", ""))
             if command.split()[:1] in (["ruff"], ["pytest"]):
                 raise AssertionError(f"{job_id}: {command!r} bypasses $RUN")
+        # The audit reads the lock with `uv export` rather than installing it.
+        if job_id == "audit":
+            continue
         install = next(st for st in steps if st.get("name") == "Install")
         assert "uv sync --locked $UV_SYNC_ARGS" in install["run"], job_id
+
+
+def python_ci_audit_step(name: str, job_id: str = "audit") -> str:
+    job = yaml.safe_load((ROOT / ".github/workflows/python-ci.yml").read_text())["jobs"][job_id]
+    return next(s["run"] for s in job["steps"] if s.get("name") == name)
+
+
+def test_python_ci_audits_in_its_own_job_like_node_ci():
+    # Same input name and default as node-ci, so a caller opts out of either
+    # the same way, and a job of its own outside the version matrix.
+    python = yaml.safe_load((ROOT / ".github/workflows/python-ci.yml").read_text())
+    node = yaml.safe_load((ROOT / ".github/workflows/node-ci.yml").read_text())
+    for workflow in (python, node):
+        audit = workflow[True]["workflow_call"]["inputs"]["audit"]
+        assert audit["type"] == "boolean" and audit["default"] is True
+        job = workflow["jobs"]["audit"]
+        assert job["if"] == "inputs.audit"
+        assert job["name"] == "dependency audit"
+        assert "strategy" not in job
+        assert "matrix" not in json.dumps(job)
+
+
+def test_python_ci_blocks_on_runtime_and_reports_development_advisories():
+    # Each tree is one pip-audit run per line of its args file; any failed run
+    # fails the runtime step, and only annotates the development one.
+    runtime = python_ci_audit_step("audit runtime dependencies")
+    assert 'done 3< "$RUNNER_TEMP/audit/runtime.args"' in runtime
+    assert "pip-audit --progress-spinner off $args || status=1" in runtime
+    assert runtime.rstrip().endswith('exit "$status"')
+    assert "|| true" not in runtime
+    development = python_ci_audit_step("audit development tree (advisory)")
+    assert 'done 3< "$RUNNER_TEMP/audit/development.args"' in development
+    assert "pip-audit --progress-spinner off $args || status=1" in development
+    assert "exit" not in development.split("done 3<")[1]
+    assert "::error title=Development dependency advisory::" in development
+    job = yaml.safe_load((ROOT / ".github/workflows/python-ci.yml").read_text())["jobs"]["audit"]
+    assert not any(s.get("continue-on-error") for s in job["steps"])
+
+
+def test_python_ci_audit_resolves_runtime_without_extras_or_groups():
+    resolve = python_ci_audit_step("Resolve runtime and development dependencies")
+    export_args = re.search(r'export_args="([^"]*)"', resolve).group(1)
+    assert "--no-default-groups" in export_args and "--frozen" in export_args
+    # --frozen trusts the lock, so it is checked first: a stale lock fails.
+    assert resolve.index("uv lock --check") < resolve.index("uv export")
+    assert 'uv export $export_args -o "$out/export-runtime.txt"' in resolve
+    # Never one selection of every extra and group: uv refuses it when the
+    # project declares any of them conflicting.
+    assert "--all-extras" not in resolve and "--all-groups" not in resolve
+    assert '--selections pyproject.toml' in resolve
+    # Each selections line is a list of arguments, workspace members included.
+    assert "while read -r -a selection <&3; do" in resolve
+    assert 'uv export $export_args "${selection[@]}"' in resolve
+    assert '"$out/runtime" "$out/export-runtime.txt"' in resolve
+    assert '"$out/development" "$out"/export-*.txt' in resolve
+    # Without a lock this job installs only the development tree.
+    assert "pip install" not in resolve and "--index-options" not in resolve
+    # Fails rather than passing with nothing audited.
+    assert "exit 1" in resolve
+
+
+def test_python_ci_audit_runtime_install_takes_only_the_index_options():
+    # Without a uv.lock the runtime tree resolves from the caller's indexes,
+    # picked out of `install` by the script (tests/test_audit_requirements.py),
+    # never by running it.
+    resolve = python_ci_audit_step("Resolve runtime dependencies", "runtime-audit")
+    assert '--index-options "$INSTALL"' in resolve
+    assert "while IFS= read -r -d '' option; do" in resolve
+    assert '"$PYTHON" -m pip --python "$out/runtime/bin/python" install --quiet "${index[@]}" -e .' in resolve
+    assert "eval" not in resolve
+
+
+def test_python_ci_audit_runs_the_no_lock_runtime_tree_per_matrix_python():
+    # Without a lock a marker can make each Python's runtime tree different,
+    # so each python-versions entry gets a job of its own. setup-python
+    # resolves the entry (3.x, a range, pypy3.10) and python-path names the
+    # interpreter it chose; nothing here matches versions itself.
+    workflow = yaml.safe_load((ROOT / ".github/workflows/python-ci.yml").read_text())
+    plan = workflow["jobs"]["audit-plan"]
+    assert plan["if"] == "inputs.audit"
+    assert plan["outputs"]["lock"] == "${{ steps.tool.outputs.uv }}"
+    job = workflow["jobs"]["runtime-audit"]
+    assert job["needs"] == "audit-plan"
+    assert job["if"] == "inputs.audit && needs.audit-plan.outputs.lock != 'true'"
+    assert job["strategy"]["matrix"]["python-version"] == "${{ fromJSON(inputs.python-versions) }}"
+    assert job["strategy"]["fail-fast"] is False
+    assert "${{ matrix.python-version }}" in job["name"]
+    setup, tool = [s for s in job["steps"] if str(s.get("uses", "")).startswith("actions/setup-python@")]
+    assert setup["with"]["python-version"] == "${{ matrix.python-version }}"
+    # pip-audit and the script run on the audit's Python, set up last so it is
+    # the default: the matrix may hold a Python older than pip-audit supports.
+    assert tool["with"]["python-version"] == "${{ inputs.python-version }}"
+    assert job["steps"].index(tool) > job["steps"].index(setup)
+    resolve = next(s for s in job["steps"] if s.get("name") == "Resolve runtime dependencies")
+    assert resolve["env"]["PYTHON"] == "${{ steps.%s.outputs.python-path }}" % setup["id"]
+    assert '"$PYTHON" -m venv --without-pip "$out/runtime"' in resolve["run"]
+    assert 'python -I "$RUNNER_TEMP/audit-requirements.py"' in resolve["run"]
+    assert '"$PYTHON" -I' not in resolve["run"]
+
+
+def test_python_ci_audit_fails_closed_on_the_runtime_tree():
+    # Blocking, and never green with nothing checked: a no-lock leg fails
+    # without a project or a site-packages to read, and the audit job's own
+    # runtime step, the only one that may report nothing to audit, runs only
+    # on a uv export.
+    audit = yaml.safe_load((ROOT / ".github/workflows/python-ci.yml").read_text())["jobs"]["audit"]
+    runtime = next(s for s in audit["steps"] if s.get("name") == "audit runtime dependencies")
+    assert runtime["if"] == "steps.tool.outputs.uv == 'true'"
+    resolve = python_ci_audit_step("Resolve runtime dependencies", "runtime-audit")
+    assert "::error title=Nothing to audit::" in resolve and "exit 1" in resolve
+    leg = python_ci_audit_step("audit runtime dependencies", "runtime-audit")
+    assert '[ ! -d "$SITE" ]' in leg and "exit 1" in leg
+    assert 'pip-audit --progress-spinner off --skip-editable --path "$SITE"' in leg
+    assert "|| true" not in leg and "|| status" not in leg and "No runtime dependencies" not in leg
+
+
+def test_python_ci_audit_prepares_uv_exports_with_the_fetched_script():
+    # Hashed, so pip-audit resolves nothing, after the script has dropped what
+    # it cannot audit; one run per file the script wrote.
+    resolve = python_ci_audit_step("Resolve runtime and development dependencies")
+    assert 'python -I "$RUNNER_TEMP/audit-requirements.py"' in resolve
+    assert 'echo "--disable-pip -r $file"' in resolve
+    assert "--no-deps" not in resolve and "--no-hashes" not in resolve
+    fetch = python_ci_audit_step("Fetch the pinned pip-audit requirements and script")
+    assert "audit-requirements.py" in fetch and "$REF/scripts/$file" in fetch
+    assert (ROOT / "scripts/audit-requirements.py").is_file()
+
+
+def test_python_ci_audit_installs_the_pinned_pip_audit():
+    pins = (ROOT / "scripts/requirements-audit.txt").read_text()
+    assert re.search(r"^pip-audit==\S+$", pins, re.M)
+    fetch = python_ci_audit_step("Fetch the pinned pip-audit requirements and script")
+    assert "for file in requirements-audit.txt " in fetch and "$REF/scripts/$file" in fetch
+    text = (ROOT / ".github/workflows/python-ci.yml").read_text()
+    assert "REF: ${{ job.workflow_sha }}" in text
+    # Dependabot's /scripts entry is what keeps the pin current.
+    config = yaml.safe_load((ROOT / ".github/dependabot.yml").read_text())
+    assert any(
+        u["package-ecosystem"] == "pip" and u.get("directory") == "/scripts" for u in config["updates"]
+    )
+
+
+def test_template_ci_gate_needs_the_python_ci_job():
+    # A failed job inside a reusable workflow fails the calling job, so the
+    # audit fails `ci gate` through the job that calls python-ci.
+    jobs = yaml.safe_load((ROOT / "template/python/.github/workflows/ci.yml").read_text())["jobs"]
+    (caller,) = [i for i, j in jobs.items() if "/python-ci.yml@" in str(j.get("uses", ""))]
+    assert "audit" not in (jobs[caller].get("with") or {})
+    gate = next(j for j in jobs.values() if j.get("name") == "ci gate")
+    assert caller in gate["needs"]
 
 
 def test_uv_tools_run_in_the_synced_environment():
