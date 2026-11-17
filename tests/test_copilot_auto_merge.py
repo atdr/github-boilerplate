@@ -76,6 +76,8 @@ echo "$*" >>"$FAKE/calls"
 if [ "$1" = pr ] && [ "$2" = view ]; then
 	n=$3
 	[ ! -f "$FAKE/view-fail-$n" ] || exit 1
+	# The squash commit; the tip is the same unless a test moves it.
+	case "$*" in *mergeCommit*) echo cccccccccccccccccccccccccccccccccccccccc; exit 0 ;; esac
 	if [ -f "$FAKE/state-$n" ]; then cat "$FAKE/state-$n"; else echo CLEAN; fi
 	exit 0
 fi
@@ -93,6 +95,9 @@ if [ "$1" = api ]; then
 			[ ! -f "$FAKE/reviews-$n" ] || cat "$FAKE/reviews-$n"
 			;;
 		"repos/$REPO") echo main ;;
+		"repos/$REPO/commits/main")
+			if [ -f "$FAKE/tip" ]; then cat "$FAKE/tip"; else echo cccccccccccccccccccccccccccccccccccccccc; fi
+			;;
 		esac
 	done
 	exit 0
@@ -146,11 +151,23 @@ def test_each_merge_starts_ci_and_checks_on_the_default_branch(tmp_path):
     result, _ = sweep(tmp_path, [pr(1)], {1: [f"APPROVED {HEAD}"]})
     assert result.returncode == 0, result.stderr
     calls = (tmp_path / "calls").read_text().splitlines()
-    assert calls[-3:] == [
+    assert calls[-5:] == [
         merge(1),
+        f"pr view 1 --repo {REPO} --json mergeCommit --jq .mergeCommit.oid",
+        f"api repos/{REPO}/commits/main --jq .sha",
         f"workflow run ci.yml --ref main --repo {REPO}",
         f"workflow run checks.yml --ref main --repo {REPO}",
     ]
+    assert "::warning" not in result.stdout
+
+
+def test_a_merge_overtaken_before_its_dispatch_is_reported(tmp_path):
+    # The dispatched runs test the newer tip, so this commit has none of its own.
+    (tmp_path / "tip").write_text("d" * 40 + "\n")
+    result, merges = sweep(tmp_path, [pr(1)], {1: [f"APPROVED {HEAD}"]})
+    assert result.returncode == 1
+    assert merges == [merge(1)]
+    assert f"#1: main moved past its merge commit {'c' * 40}" in result.stdout
     for name in ("ci", "checks"):
         on = yaml.safe_load((ROOT / f".github/workflows/{name}.yml").read_text())
         on = on.get("on", on.get(True))
