@@ -724,11 +724,17 @@ def test_python_ci_audit_runs_the_no_lock_runtime_tree_per_matrix_python():
     assert job["strategy"]["matrix"]["python-version"] == "${{ fromJSON(inputs.python-versions) }}"
     assert job["strategy"]["fail-fast"] is False
     assert "${{ matrix.python-version }}" in job["name"]
-    setup = next(s for s in job["steps"] if str(s.get("uses", "")).startswith("actions/setup-python@"))
+    setup, tool = [s for s in job["steps"] if str(s.get("uses", "")).startswith("actions/setup-python@")]
     assert setup["with"]["python-version"] == "${{ matrix.python-version }}"
+    # pip-audit and the script run on the audit's Python, set up last so it is
+    # the default: the matrix may hold a Python older than pip-audit supports.
+    assert tool["with"]["python-version"] == "${{ inputs.python-version }}"
+    assert job["steps"].index(tool) > job["steps"].index(setup)
     resolve = next(s for s in job["steps"] if s.get("name") == "Resolve runtime dependencies")
     assert resolve["env"]["PYTHON"] == "${{ steps.%s.outputs.python-path }}" % setup["id"]
     assert '"$PYTHON" -m venv --without-pip "$out/runtime"' in resolve["run"]
+    assert 'python -I "$RUNNER_TEMP/audit-requirements.py"' in resolve["run"]
+    assert '"$PYTHON" -I' not in resolve["run"]
 
 
 def test_python_ci_audit_fails_closed_on_the_runtime_tree():

@@ -394,6 +394,13 @@ jobs:
         id: python
         with:
           python-version: ${{ matrix.python-version }}
+      # pip-audit and the script run on the audit job's Python, set up second
+      # so it is the default `python`: the matrix may test a Python older than
+      # pip-audit supports. The matrix interpreter only installs the tree, and
+      # pip-audit reads that tree's metadata from outside it.
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ inputs.python-version }}
       # As in the audit job: pinned in this repository, fetched at the commit
       # the caller pinned.
       - name: Fetch the pinned pip-audit requirements and script
@@ -404,9 +411,8 @@ jobs:
             curl --fail --silent --show-error --retry 3 -o "$RUNNER_TEMP/$file" \
               "https://raw.githubusercontent.com/atdr/github-boilerplate/$REF/scripts/$file"
           done
-      # Into the interpreter setup-python installed, never into the venv
-      # audited below.
-      - run: pip install -r "$RUNNER_TEMP/requirements-audit.txt"
+      # Into the audit job's Python, never into the venv audited below.
+      - run: python -m pip install -r "$RUNNER_TEMP/requirements-audit.txt"
       - name: Resolve runtime dependencies
         env:
           INSTALL: ${{ inputs.install }}
@@ -421,7 +427,7 @@ jobs:
           # The runtime tree resolves from the same indexes as `install`, so
           # the script picks its index options out of it, and nothing else:
           # no extras, and no other part of it runs.
-          "$PYTHON" -I "$RUNNER_TEMP/audit-requirements.py" --index-options "$INSTALL" \
+          python -I "$RUNNER_TEMP/audit-requirements.py" --index-options "$INSTALL" \
             > "$out/index-options"
           index=()
           while IFS= read -r -d '' option; do
