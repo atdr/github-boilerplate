@@ -75,6 +75,22 @@ for path in $workflows; do
 	# Decoded whole and matched with case, not piped into grep -q: under
 	# pipefail an early grep exit can SIGPIPE the decoder and read as no match.
 	decoded=$(printf '%s' "$content" | base64 --decode)
+	# Which gate this file's jobs report, if it is one of the gate workflows.
+	stem=${path##*/}
+	stem=${stem%.yml}
+	case "$path" in
+	.github/workflows/*.yml)
+		job_names=$(printf '%s\n' "$decoded" | awk -f "$here/scripts/workflow-job-names.awk")
+		case "
+$job_names
+" in
+		*"
+$stem gate
+"*) gate_jobs="${gate_jobs:-}$stem gate
+" ;;
+		esac
+		;;
+	esac
 	all_workflows="${all_workflows:-}$decoded
 "
 done
@@ -101,19 +117,32 @@ else
 fi
 
 # A gate is required only where the repo has the workflow that reports it:
-# `<stem> gate` comes from .github/workflows/<stem>.yml, and a ruleset
-# requiring a check no workflow reports would block every merge. A repo with
-# none (a template whose workflows must also run in the repos made from it)
-# keeps the rest of the ruleset. scripts/ruleset.jq does the cut.
+# `<stem> gate` comes from a job named exactly that in
+# .github/workflows/<stem>.yml, and a ruleset requiring a check no job reports
+# would block every merge. A workflow with that file name but no such job (a
+# repo's own ci.yml, say) is reported in $gateless and requires nothing. A repo
+# with no gate (a template whose workflows must also run in the repos made from
+# it) keeps the rest of the ruleset. scripts/ruleset.jq does the cut.
 gates=
+gateless=
 for stem in pull-request checks ci; do
 	case "
-$workflows
+${gate_jobs:-}
 " in
 	*"
-.github/workflows/$stem.yml
+$stem gate
 "*) gates="$gates$stem gate
 " ;;
+	*)
+		case "
+$workflows
+" in
+		*"
+.github/workflows/$stem.yml
+"*) gateless="$gateless$stem.yml
+" ;;
+		esac
+		;;
 	esac
 done
 
@@ -215,8 +244,11 @@ if [ "$visibility" = public ]; then
 	if [ -n "$gates" ]; then
 		echo "requires: $(printf '%s' "$gates" | paste -sd, - | sed 's/,/, /g')"
 	else
-		echo "requires no status checks: none of pull-request.yml, checks.yml, ci.yml"
+		echo "requires no status checks: no workflow reports a gate"
 	fi
+	for file in $gateless; do
+		echo "not required: $file has no job named \"${file%.yml} gate\""
+	done
 	if [ "$admin_bypass" = true ]; then
 		echo "admins may bypass the ruleset: the repo commits .github/admin-bypass"
 	fi
