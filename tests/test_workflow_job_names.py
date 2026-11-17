@@ -216,6 +216,7 @@ def test_jobs_in_flow_style_are_flagged():
 FAKE_GH = r"""#!/bin/bash
 echo "$*" >>"$FAKE/calls"
 case "$2" in
+repos/example/repo) cat "$FAKE/visibility" ;;
 repos/example/repo/contents/.github/workflows) echo .github/workflows/ci.yml ;;
 repos/example/repo/contents/.github/workflows/ci.yml) base64 <"$FAKE/ci.yml" ;;
 *) exit 99 ;;
@@ -223,13 +224,20 @@ esac
 """
 
 
-def test_configure_stops_before_any_change_on_an_unreadable_gate_workflow(tmp_path):
-    # --apply against a fake gh that knows only the two read calls: exit 1 with
-    # the reason, and no call beyond those reads.
+READS = [
+    "api repos/example/repo --jq .visibility",
+    "api repos/example/repo/contents/.github/workflows --jq .[].path",
+    "api repos/example/repo/contents/.github/workflows/ci.yml --jq .content",
+]
+
+
+def configure_unreadable_gate(tmp_path, visibility):
+    # --apply against a fake gh that knows only the three read calls.
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     (bin_dir / "gh").write_text(FAKE_GH)
     (bin_dir / "gh").chmod(0o755)
+    (tmp_path / "visibility").write_text(f"{visibility}\n")
     (tmp_path / "ci.yml").write_text("jobs:\n  gate:\n    name: >-\n      ci gate\n")
     (tmp_path / "calls").touch()
     result = subprocess.run(
@@ -238,13 +246,22 @@ def test_configure_stops_before_any_change_on_an_unreadable_gate_workflow(tmp_pa
         capture_output=True,
         text=True,
     )
+    return result, (tmp_path / "calls").read_text().splitlines()
+
+
+def test_configure_stops_before_any_change_on_an_unreadable_gate_workflow(tmp_path):
+    result, calls = configure_unreadable_gate(tmp_path, "public")
     assert result.returncode == 1, result.stderr
     assert 'cannot tell whether .github/workflows/ci.yml has a job named "ci gate"' in result.stderr
     assert "gate: name: is not a one line value" in result.stderr
-    assert (tmp_path / "calls").read_text().splitlines() == [
-        "api repos/example/repo/contents/.github/workflows --jq .[].path",
-        "api repos/example/repo/contents/.github/workflows/ci.yml --jq .content",
-    ]
+    assert calls == READS
+
+
+def test_configure_goes_on_for_a_private_repo_which_gets_no_ruleset(tmp_path):
+    # The fake gh fails the next call, so the run stops there: past the check.
+    result, calls = configure_unreadable_gate(tmp_path, "private")
+    assert "cannot tell" not in result.stderr
+    assert calls[:3] == READS and len(calls) > 3
 
 
 def test_an_unreadable_job_does_not_hide_a_readable_gate():

@@ -56,6 +56,8 @@ repository_settings=$(mktemp)
 api_error=$(mktemp)
 protection=$(mktemp)
 trap 'rm -f "$workflow_settings" "$repository_settings" "$api_error" "$protection"' EXIT
+# Read first: a private repo gets no ruleset, so its gates are never used.
+visibility=$(gh api "repos/$repo" --jq .visibility)
 # Only a 404 means the repo has no workflows folder. gh prints that error body
 # to stdout, so the output only counts when the call succeeded.
 if ! workflows=$(gh api "repos/$repo/contents/.github/workflows" --jq '.[].path' 2>"$api_error"); then
@@ -92,10 +94,13 @@ $stem gate
 " ;;
 		*"
 ?"*)
-			echo "cannot tell whether $path has a job named \"$stem gate\":" >&2
-			printf '%s\n' "$job_names" | sed -n 's/^?/  /p' >&2
-			echo "Write each job's name: as one line in a block mapping, then rerun." >&2
-			exit 1
+			# Only where the answer is used: a private repo gets no ruleset.
+			if [ "$visibility" = public ]; then
+				echo "cannot tell whether $path has a job named \"$stem gate\":" >&2
+				printf '%s\n' "$job_names" | sed -n 's/^?/  /p' >&2
+				echo "Write each job's name: as one line in a block mapping, then rerun." >&2
+				exit 1
+			fi
 			;;
 		esac
 		;;
@@ -159,7 +164,6 @@ done
 # nothing required, auto-merge merges a Dependabot PR at once, before any
 # check has run. That rules out private repos (GitHub Free gives them no
 # ruleset) and any repo with none of the gate workflows.
-visibility=$(gh api "repos/$repo" --jq .visibility)
 if [ "$visibility" = public ] && [ -n "$gates" ]; then
 	auto_merge=true
 else
