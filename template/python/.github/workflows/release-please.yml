@@ -44,26 +44,16 @@ jobs:
   # Gated on release-please's own output: a release made with GITHUB_TOKEN
   # starts no `on: release` workflow.
   #
-  # In this file, not a reusable workflow: PyPI's trusted publisher names the
-  # workflow file that publishes, and that has to be the caller's.
-  publish:
-    name: publish to PyPI
+  # Builds in its own job, so the build backend and everything it pulls in
+  # never run where a PyPI credential can be minted.
+  build:
+    name: build the distributions
     needs: release-please
     if: needs.release-please.outputs.release_created == 'true'
     timeout-minutes: 10
     runs-on: ubuntu-latest
-    # The url puts a link to the published version on the deployment, so the
-    # environment's page shows what each run released.
-    environment:
-      name: pypi
-      url: ${{ steps.published.outputs.url }}
     permissions:
-      # A job-level block sets every unlisted scope to none, and checkout
-      # needs this one in a private repo.
       contents: read
-      # No API token: PyPI trusts this workflow (owner/repo/environment) to
-      # mint its own short-lived credential via OIDC.
-      id-token: write
     steps:
       - uses: actions/checkout@v7
         with:
@@ -76,6 +66,37 @@ jobs:
         run: |
           pip install build
           python -m build
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  # In this file, not a reusable workflow: PyPI's trusted publisher names the
+  # workflow file that publishes, and that has to be the caller's.
+  #
+  # Installs and builds nothing: it publishes the distributions the build job
+  # made, exactly as they were uploaded.
+  publish:
+    name: publish to PyPI
+    needs: build
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    # The url puts a link to the published version on the deployment, so the
+    # environment's page shows what each run released.
+    environment:
+      name: pypi
+      url: ${{ steps.published.outputs.url }}
+    permissions:
+      # No API token: PyPI trusts this workflow (owner/repo/environment) to
+      # mint its own short-lived credential via OIDC. Nothing else: there is no
+      # checkout, and the artifact downloads with the runner's own token.
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: dist
+          path: dist/
       - uses: pypa/gh-action-pypi-publish@release/v1
       # After the publish, so a failed one links nowhere. Read from the sdist,
       # <name>-<version>.tar.gz, which is what PyPI was sent: a version holds

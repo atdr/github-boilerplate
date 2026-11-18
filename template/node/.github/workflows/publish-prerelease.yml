@@ -21,18 +21,16 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publish-prerelease:
-    name: publish prerelease to npm
+  # Installs, builds and packs in its own job, so no dependency's install
+  # script runs where an npm credential can be minted. `npm pack` runs the
+  # package's prepack and prepare scripts; prepublishOnly never runs, so a
+  # build kept there belongs in prepack.
+  build:
+    name: pack the prerelease
     timeout-minutes: 10
     runs-on: ubuntu-latest
-    # Scopes the OIDC token so npm's trusted publisher can require it. The url
-    # puts a link to the published version on the deployment.
-    environment:
-      name: npm-prerelease
-      url: ${{ steps.publish.outputs.url }}
     permissions:
       contents: read
-      id-token: write # OIDC for npm trusted publishing; provenance is automatic
     env:
       # Read through the environment rather than inlined into the run scripts,
       # so a dispatch input can never be interpreted as shell.
@@ -55,18 +53,88 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: lts/*
-          registry-url: https://registry.npmjs.org
       - run: npm ci
       # Runner-local bump, never committed: main keeps its released version and
       # the pending release-please PR keeps proposing a clean next version.
-      - run: npm version "$VERSION" --no-git-tag-version
+      - run: npm version "$VERSION" --no-git-tag-version --workspaces=false
+      # Outside the checkout: the package's own scripts may build into dist/.
+      - run: mkdir "$RUNNER_TEMP/pack" && npm pack --workspaces=false --pack-destination "$RUNNER_TEMP/pack"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package
+          path: ${{ runner.temp }}/pack/*.tgz
+          if-no-files-found: error
+
+  # Installs and builds nothing: it publishes the tarball the build job packed,
+  # and npm runs no package scripts when it publishes a tarball.
+  publish-prerelease:
+    name: publish prerelease to npm
+    needs: build
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    # Scopes the OIDC token so npm's trusted publisher can require it. The url
+    # puts a link to the published version on the deployment.
+    environment:
+      name: npm-prerelease
+      url: ${{ steps.publish.outputs.url }}
+    permissions:
+      # OIDC for npm trusted publishing; provenance is automatic. Nothing
+      # else: there is no checkout, and the artifact downloads with the
+      # runner's own token.
+      id-token: write
+    env:
+      VERSION: ${{ inputs.version }}
+      DIST_TAG: ${{ inputs.dist_tag }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: package
+          path: dist/
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          registry-url: https://registry.npmjs.org
       - name: Publish
         id: publish
+        env:
+          # Only these publishConfig keys may come from the package.
+          CHECK_PUBLISH_CONFIG: >-
+            const manifest = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8").replace(/^\uFEFF/, ""));
+            const extra = Object.keys(manifest.publishConfig ?? {})
+            .filter((key) => !["access", "tag", "provenance"].includes(key));
+            if (extra.length) {
+            console.log(`::error::the packed package.json sets publishConfig ${extra.join(", ")}, which only this workflow may set`);
+            process.exit(1); }
         run: |
-          npm publish --tag "$DIST_TAG"
+          set -- dist/*.tgz
+          # One package from the repo root: npm workspaces would pack several.
+          if [ $# -ne 1 ] || [ ! -f "$1" ]; then
+            echo "::error::expected one tarball, found: $*. This workflow publishes a single package from the repo root, not npm workspaces"
+            exit 1
+          fi
+          # npm drops each entry's first path component when it reads the
+          # tarball, so an entry outside package/, or a second package.json,
+          # could be the manifest it uses rather than the one checked here.
+          entries=$(tar -tzf "$1")
+          if printf '%s\n' "$entries" | grep -v '^package/' >/dev/null ||
+            printf '%s\n' "$entries" | grep -E '//|(^|/)\.\.?(/|$)' >/dev/null ||
+            [ "$(printf '%s\n' "$entries" | grep -c '^package/package\.json$')" -ne 1 ]; then
+            echo "::error::$1 is not a plain npm pack tarball: an entry outside package/, or not exactly one package/package.json"
+            exit 1
+          fi
+          # A file, not an argument: a large exports map can pass the
+          # kernel's limit on one argument.
+          manifest=$RUNNER_TEMP/package.json
+          tar -xzOf "$1" package/package.json >"$manifest"
+          # npm applies the tarball's publishConfig, so a build step could
+          # point the OIDC exchange at another registry or switch off TLS
+          # checks. The registry and its trust settings come from this job.
+          node -e "$CHECK_PUBLISH_CONFIG" "$manifest"
+          npm publish "$1" --tag "$DIST_TAG"
           # After the publish, so a failed one links nowhere.
-          name=$(node -p 'require("./package.json").name')
-          echo "url=https://www.npmjs.com/package/$name/v/$VERSION" >> "$GITHUB_OUTPUT"
+          name=$(node -p 'require(process.argv[1]).name' "$manifest")
+          version=$(node -p 'require(process.argv[1]).version.split("+")[0]' "$manifest")
+          echo "url=https://www.npmjs.com/package/$name/v/$version" >> "$GITHUB_OUTPUT"
 
   tag-prerelease:
     # Records which commit a beta was built from, so a report against

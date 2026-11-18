@@ -591,6 +591,74 @@ def test_catches_a_placeholder_copied_by_hand(repo):
     assert "placeholders" in rules(repo)
 
 
+# A command, not a mention: at the start of a line or after a shell operator,
+# so `echo "npm ci runs in the build job"` passes. `npm pack` and `npm run`
+# run the package's own scripts. Variable assignments may come first
+# (`CI=true npm ci`), and so may a shell keyword (`if npm ci; then`).
+INSTALL_OR_BUILD = re.compile(
+    r"(?:^|[;&|(])\s*(?:(?:if|then|else|elif|do|while|until|!|time|exec|command|env)\s+|\w+=\S*\s+)*(?:npm (?:ci|install|i|pack|run)\b|(?:python3? -m )?pip3? install|python3? -m build|uv (?:sync|build|pip)\b)",
+    re.MULTILINE,
+)
+WORKFLOWS = sorted(
+    [*ROOT.glob(".github/workflows/*.yml"), *ROOT.glob("template/*/.github/workflows/*.yml")]
+)
+
+
+PUBLISHERS = {
+    "template/node/.github/workflows/publish-release.yml": "publish",
+    "template/node/.github/workflows/publish-prerelease.yml": "publish-prerelease",
+    "template/python/.github/workflows/release-please.yml": "publish",
+}
+
+
+@pytest.mark.parametrize("path, job", PUBLISHERS.items())
+def test_publishing_jobs_are_checked(path, job):
+    # The guard below skips any job without id-token: write, so the job that
+    # actually publishes must be one that holds it.
+    jobs = yaml.safe_load((ROOT / path).read_text())["jobs"]
+    assert jobs[job]["permissions"] == {"id-token": "write"}
+
+
+@pytest.mark.parametrize(
+    "run, flagged",
+    [
+        ("npm ci", True),
+        ("echo start\nnpm ci", True),
+        ("cd pkg && npm install", True),
+        ("npm pack", True),
+        ("npm run build", True),
+        ("python -m build", True),
+        ("pip install build", True),
+        ("uv sync --frozen", True),
+        ("CI=true npm ci", True),
+        ("python -m pip install build", True),
+        ("python3 -m build", True),
+        ("if npm ci; then echo ok; fi", True),
+        ("while ! pip install build; do sleep 1; done", True),
+        ("env CI=1 npm ci", True),
+        ("pip3 install build", True),
+        ("NODE_ENV=production HUSKY=0 npm install", True),
+        ('echo "npm ci runs in the build job"', False),
+        ('npm publish "$1" --tag "$tag"', False),
+        ("npm publish ./package.tgz", False),
+    ],
+)
+def test_install_or_build_matches_commands_not_mentions(run, flagged):
+    assert bool(INSTALL_OR_BUILD.search(run)) is flagged
+
+
+@pytest.mark.parametrize("path", WORKFLOWS, ids=lambda path: path.relative_to(ROOT).as_posix())
+def test_no_install_or_build_where_a_credential_can_be_minted(path):
+    # A job that can mint a registry credential runs no dependency's install
+    # scripts and no build backend: a build job packs, the publish job only
+    # publishes what it downloaded (STANDARDS.md, Publishing).
+    for name, job in yaml.safe_load(path.read_text())["jobs"].items():
+        if (job.get("permissions") or {}).get("id-token") != "write":
+            continue
+        for step in job.get("steps", []):
+            assert not INSTALL_OR_BUILD.search(step.get("run", "")), (name, step)
+
+
 def test_prerelease_runs_queue_per_version():
     workflow = yaml.safe_load((ROOT / "template/node/.github/workflows/publish-prerelease.yml").read_text())
     assert workflow["concurrency"]["group"] == "${{ github.workflow }}-${{ inputs.version }}"
