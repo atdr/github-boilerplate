@@ -47,12 +47,42 @@ jobs:
   # release-triggered workflow would never fire and never report an error
   # either.
   #
-  # In this file, not a reusable workflow: npm's trusted publisher names the
-  # workflow file that publishes, and that has to be the caller's.
-  publish:
-    name: publish to npm
+  # Installs, builds and packs in its own job, so no dependency's install
+  # script runs where an npm credential can be minted. `npm pack` runs the
+  # package's prepack and prepare scripts; prepublishOnly never runs, so a
+  # build kept there belongs in prepack.
+  build:
+    name: pack the package
     needs: release-please
     if: needs.release-please.outputs.release_created == 'true'
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.release-please.outputs.tag_name }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+      - run: npm ci
+      - run: mkdir dist && npm pack --pack-destination dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package
+          path: dist/
+          if-no-files-found: error
+
+  # In this file, not a reusable workflow: npm's trusted publisher names the
+  # workflow file that publishes, and that has to be the caller's.
+  #
+  # Installs and builds nothing: it publishes the tarball the build job packed,
+  # and npm runs no package scripts when it publishes a tarball.
+  publish:
+    name: publish to npm
+    needs: build
     timeout-minutes: 10
     runs-on: ubuntu-latest
     # Scopes the OIDC token so npm's trusted publisher can require it. The url
@@ -61,34 +91,39 @@ jobs:
       name: npm-release
       url: ${{ steps.publish.outputs.url }}
     permissions:
-      contents: read
-      id-token: write # OIDC for npm trusted publishing; provenance is automatic
+      # OIDC for npm trusted publishing; provenance is automatic. Nothing
+      # else: there is no checkout, and the artifact downloads with the
+      # runner's own token.
+      id-token: write
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
-          ref: ${{ needs.release-please.outputs.tag_name }}
-          persist-credentials: false
+          name: package
+          path: dist/
       - uses: actions/setup-node@v7
         with:
           # trusted publishing needs npm >= 11.5.1, bundled with Node >= 24.5
           node-version: lts/*
           registry-url: https://registry.npmjs.org
-      - run: npm ci
       # npm tags whatever it publishes 'latest' unless --tag is passed; it
       # infers nothing from a prerelease suffix. A prerelease only reaches this
       # job from a deliberate Release-As footer, so publish it under its own
-      # identifier (1.2.0-beta.1 -> beta) rather than moving latest.
+      # identifier (1.2.0-beta.1 -> beta) rather than moving latest. The name
+      # and version come from the packed package.json, which is what npm is
+      # sent.
       - name: Publish
         id: publish
         run: |
-          name=$(node -p 'require("./package.json").name')
-          version=$(node -p 'require("./package.json").version')
+          set -- dist/*.tgz
+          manifest=$(tar -xzOf "$1" package/package.json)
+          name=$(node -p 'JSON.parse(process.argv[1]).name' "$manifest")
+          version=$(node -p 'JSON.parse(process.argv[1]).version' "$manifest")
           case "$version" in
             *-*)
               tag=$(node -p 'process.argv[1].match(/-([a-z]+)/i)?.[1] ?? "next"' "$version")
-              npm publish --tag "$tag"
+              npm publish "$1" --tag "$tag"
               ;;
-            *) npm publish ;;
+            *) npm publish "$1" ;;
           esac
           # After the publish, so a failed one links nowhere.
           echo "url=https://www.npmjs.com/package/$name/v/$version" >> "$GITHUB_OUTPUT"

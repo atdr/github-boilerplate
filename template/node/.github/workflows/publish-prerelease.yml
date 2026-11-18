@@ -21,18 +21,16 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  publish-prerelease:
-    name: publish prerelease to npm
+  # Installs, builds and packs in its own job, so no dependency's install
+  # script runs where an npm credential can be minted. `npm pack` runs the
+  # package's prepack and prepare scripts; prepublishOnly never runs, so a
+  # build kept there belongs in prepack.
+  build:
+    name: pack the prerelease
     timeout-minutes: 10
     runs-on: ubuntu-latest
-    # Scopes the OIDC token so npm's trusted publisher can require it. The url
-    # puts a link to the published version on the deployment.
-    environment:
-      name: npm-prerelease
-      url: ${{ steps.publish.outputs.url }}
     permissions:
       contents: read
-      id-token: write # OIDC for npm trusted publishing; provenance is automatic
     env:
       # Read through the environment rather than inlined into the run scripts,
       # so a dispatch input can never be interpreted as shell.
@@ -55,17 +53,53 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: lts/*
-          registry-url: https://registry.npmjs.org
       - run: npm ci
       # Runner-local bump, never committed: main keeps its released version and
       # the pending release-please PR keeps proposing a clean next version.
       - run: npm version "$VERSION" --no-git-tag-version
+      - run: mkdir dist && npm pack --pack-destination dist
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package
+          path: dist/
+          if-no-files-found: error
+
+  # Installs and builds nothing: it publishes the tarball the build job packed,
+  # and npm runs no package scripts when it publishes a tarball.
+  publish-prerelease:
+    name: publish prerelease to npm
+    needs: build
+    timeout-minutes: 10
+    runs-on: ubuntu-latest
+    # Scopes the OIDC token so npm's trusted publisher can require it. The url
+    # puts a link to the published version on the deployment.
+    environment:
+      name: npm-prerelease
+      url: ${{ steps.publish.outputs.url }}
+    permissions:
+      # OIDC for npm trusted publishing; provenance is automatic. Nothing
+      # else: there is no checkout, and the artifact downloads with the
+      # runner's own token.
+      id-token: write
+    env:
+      VERSION: ${{ inputs.version }}
+      DIST_TAG: ${{ inputs.dist_tag }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: package
+          path: dist/
+      - uses: actions/setup-node@v7
+        with:
+          node-version: lts/*
+          registry-url: https://registry.npmjs.org
       - name: Publish
         id: publish
         run: |
-          npm publish --tag "$DIST_TAG"
+          set -- dist/*.tgz
+          npm publish "$1" --tag "$DIST_TAG"
           # After the publish, so a failed one links nowhere.
-          name=$(node -p 'require("./package.json").name')
+          name=$(tar -xzOf "$1" package/package.json | node -p 'JSON.parse(require("fs").readFileSync(0)).name')
           echo "url=https://www.npmjs.com/package/$name/v/$VERSION" >> "$GITHUB_OUTPUT"
 
   tag-prerelease:
