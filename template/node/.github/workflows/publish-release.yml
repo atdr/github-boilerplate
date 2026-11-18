@@ -68,11 +68,12 @@ jobs:
         with:
           node-version: lts/*
       - run: npm ci
-      - run: mkdir dist && npm pack --pack-destination dist
+      # Outside the checkout: the package's own scripts may build into dist/.
+      - run: mkdir "$RUNNER_TEMP/pack" && npm pack --pack-destination "$RUNNER_TEMP/pack"
       - uses: actions/upload-artifact@v7
         with:
           name: package
-          path: dist/
+          path: ${{ runner.temp }}/pack/*.tgz
           if-no-files-found: error
 
   # In this file, not a reusable workflow: npm's trusted publisher names the

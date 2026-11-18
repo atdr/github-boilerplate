@@ -57,11 +57,12 @@ jobs:
       # Runner-local bump, never committed: main keeps its released version and
       # the pending release-please PR keeps proposing a clean next version.
       - run: npm version "$VERSION" --no-git-tag-version
-      - run: mkdir dist && npm pack --pack-destination dist
+      # Outside the checkout: the package's own scripts may build into dist/.
+      - run: mkdir "$RUNNER_TEMP/pack" && npm pack --pack-destination "$RUNNER_TEMP/pack"
       - uses: actions/upload-artifact@v7
         with:
           name: package
-          path: dist/
+          path: ${{ runner.temp }}/pack/*.tgz
           if-no-files-found: error
 
   # Installs and builds nothing: it publishes the tarball the build job packed,
