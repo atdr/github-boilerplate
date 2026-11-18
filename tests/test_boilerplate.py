@@ -591,6 +591,38 @@ def test_catches_a_placeholder_copied_by_hand(repo):
     assert "placeholders" in rules(repo)
 
 
+INSTALL_OR_BUILD = re.compile(r"\b(npm (ci|install|i)\b|pip install|python -m build|uv (sync|build|pip))")
+WORKFLOWS = sorted(
+    [*ROOT.glob(".github/workflows/*.yml"), *ROOT.glob("template/*/.github/workflows/*.yml")]
+)
+
+
+def test_publishing_workflows_are_checked():
+    publishing = {
+        path.relative_to(ROOT).as_posix()
+        for path in WORKFLOWS
+        for job in yaml.safe_load(path.read_text())["jobs"].values()
+        if (job.get("permissions") or {}).get("id-token") == "write"
+    }
+    assert {
+        "template/node/.github/workflows/publish-release.yml",
+        "template/node/.github/workflows/publish-prerelease.yml",
+        "template/python/.github/workflows/release-please.yml",
+    } <= publishing
+
+
+@pytest.mark.parametrize("path", WORKFLOWS, ids=lambda path: path.relative_to(ROOT).as_posix())
+def test_no_install_or_build_where_a_credential_can_be_minted(path):
+    # A job that can mint a registry credential runs no dependency's install
+    # scripts and no build backend: a build job packs, the publish job only
+    # publishes what it downloaded (STANDARDS.md, Publishing).
+    for name, job in yaml.safe_load(path.read_text())["jobs"].items():
+        if (job.get("permissions") or {}).get("id-token") != "write":
+            continue
+        for step in job.get("steps", []):
+            assert not INSTALL_OR_BUILD.search(step.get("run", "")), (name, step)
+
+
 def test_prerelease_runs_queue_per_version():
     workflow = yaml.safe_load((ROOT / "template/node/.github/workflows/publish-prerelease.yml").read_text())
     assert workflow["concurrency"]["group"] == "${{ github.workflow }}-${{ inputs.version }}"
