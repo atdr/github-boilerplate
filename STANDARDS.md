@@ -218,10 +218,10 @@ publish job also refuses a tarball whose `publishConfig` sets anything but
 `access`, `tag` or `provenance`, since npm would apply a registry or TLS setting
 from it to the OIDC exchange. The trusted publisher still sees the same workflow
 file and environment, since both jobs are in the caller's file and only the
-publish job names the environment. A failed publish reruns from the same
-artifact while GitHub keeps it (90 days unless the repo sets less); after that,
-re-running the build job rebuilds from the release tag and runs the publish job
-again.
+publish job names the environment. A failed publish job reruns from the same
+artifact, but only within GitHub's 30 day rerun window, and only while the
+artifact is kept (90 days by default, less if the repo sets it lower). After
+that, the version can only be published by hand.
 
 Where a service has no OIDC (Cloudflare), the token is an environment secret
 limited to `main`, and the deploy job cannot write to the repo. An optional
