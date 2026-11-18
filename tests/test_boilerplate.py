@@ -593,9 +593,10 @@ def test_catches_a_placeholder_copied_by_hand(repo):
 
 # A command, not a mention: at the start of a line or after a shell operator,
 # so `echo "npm ci runs in the build job"` passes. `npm pack` and `npm run`
-# run the package's own scripts.
+# run the package's own scripts. Variable assignments may come first
+# (`CI=true npm ci`).
 INSTALL_OR_BUILD = re.compile(
-    r"(?:^|[;&|(])\s*(?:npm (?:ci|install|i|pack|run)\b|pip install|python -m build|uv (?:sync|build|pip)\b)",
+    r"(?:^|[;&|(])\s*(?:\w+=\S*\s+)*(?:npm (?:ci|install|i|pack|run)\b|pip install|python -m build|uv (?:sync|build|pip)\b)",
     re.MULTILINE,
 )
 WORKFLOWS = sorted(
@@ -629,6 +630,8 @@ def test_publishing_jobs_are_checked(path, job):
         ("python -m build", True),
         ("pip install build", True),
         ("uv sync --frozen", True),
+        ("CI=true npm ci", True),
+        ("NODE_ENV=production HUSKY=0 npm install", True),
         ('echo "npm ci runs in the build job"', False),
         ('npm publish "$1" --tag "$tag"', False),
         ("npm publish ./package.tgz", False),
