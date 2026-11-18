@@ -99,25 +99,40 @@ jobs:
         env:
           # Only these publishConfig keys may come from the package.
           CHECK_PUBLISH_CONFIG: >-
-            const extra = Object.keys(JSON.parse(process.argv[1]).publishConfig ?? {})
+            const manifest = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+            const extra = Object.keys(manifest.publishConfig ?? {})
             .filter((key) => !["access", "tag", "provenance"].includes(key));
             if (extra.length) {
             console.log(`::error::the packed package.json sets publishConfig ${extra.join(", ")}, which only this workflow may set`);
             process.exit(1); }
         run: |
           set -- dist/*.tgz
+          # One package from the repo root: npm workspaces would pack several.
           if [ $# -ne 1 ] || [ ! -f "$1" ]; then
-            echo "::error::expected exactly one tarball from the build job, found: $*"
+            echo "::error::expected one tarball, found: $*. This workflow publishes a single package from the repo root, not npm workspaces"
             exit 1
           fi
-          manifest=$(tar -xzOf "$1" package/package.json)
+          # npm drops each entry's first path component when it reads the
+          # tarball, so an entry outside package/, or a second package.json,
+          # could be the manifest it uses rather than the one checked here.
+          entries=$(tar -tzf "$1")
+          if printf '%s\n' "$entries" | grep -v '^package/' >/dev/null ||
+            printf '%s\n' "$entries" | grep -E '//|(^|/)\.\.?(/|$)' >/dev/null ||
+            [ "$(printf '%s\n' "$entries" | grep -c '^package/package\.json$')" -ne 1 ]; then
+            echo "::error::$1 is not a plain npm pack tarball: an entry outside package/, or not exactly one package/package.json"
+            exit 1
+          fi
+          # A file, not an argument: a large exports map can pass the
+          # kernel's limit on one argument.
+          manifest=$RUNNER_TEMP/package.json
+          tar -xzOf "$1" package/package.json >"$manifest"
           # npm applies the tarball's publishConfig, so a build step could
           # point the OIDC exchange at another registry or switch off TLS
           # checks. The registry and its trust settings come from this job.
           node -e "$CHECK_PUBLISH_CONFIG" "$manifest"
           npm publish "$1" --tag "$DIST_TAG"
           # After the publish, so a failed one links nowhere.
-          name=$(node -p 'JSON.parse(process.argv[1]).name' "$manifest")
+          name=$(node -p 'require(process.argv[1]).name' "$manifest")
           echo "url=https://www.npmjs.com/package/$name/v/$VERSION" >> "$GITHUB_OUTPUT"
 
   tag-prerelease:
