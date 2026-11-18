@@ -6,6 +6,9 @@
 #   environment:
 #     name: pypi
 #
+# Text inside a block scalar (`run: |`, say) is skipped, so an example in a
+# script never counts as a declaration.
+#
 # A line-based reading, not a YAML parser, so configure.sh needs nothing beyond
 # awk. POSIX awk only: macOS ships BWK awk, which has no gensub.
 
@@ -28,6 +31,18 @@ function indent(line) {
 	sub(/^[ \t]*#.*/, "", line)
 	if (line ~ /^[ \t]*$/)
 		next
+}
+
+# Inside a block scalar: every line indented deeper than its key is text.
+scalar {
+	if (indent(line) > scalar_indent)
+		next
+	scalar = 0
+}
+
+line ~ /:[ \t]*[|>][-+0-9]*[ \t]*$/ {
+	scalar = 1
+	scalar_indent = indent(line)
 }
 
 # Inside a block mapping under `environment:`: look for its name, and leave it

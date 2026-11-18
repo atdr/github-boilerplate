@@ -39,7 +39,7 @@ fake = os.environ["FAKE"]
 args = sys.argv[2:]
 with open(os.path.join(fake, "calls"), "a") as log:
     log.write(" ".join(sys.argv[1:]) + "\n")
-method, jq, endpoint, fields = "GET", None, None, {{}}
+method, jq, endpoint, fields, body_from = "GET", None, None, {{}}, None
 i = 0
 while i < len(args):
     a = args[i]
@@ -50,7 +50,7 @@ while i < len(args):
     elif a == "-f":
         k, v = args[i + 1].split("=", 1); fields[k] = v; i += 1
     elif a == "--input":
-        i += 1
+        body_from = args[i + 1]; i += 1
     elif not a.startswith("-") and endpoint is None:
         endpoint = a
     i += 1
@@ -99,16 +99,17 @@ elif parts[:1] == ["environments"]:
         out({{"name": name, "deployment_branch_policy": env["policy"]}})
     elif len(parts) == 2 and method == "PUT":
         env = envs.setdefault(name, {{"policy": None, "branches": []}})
-        if not sys.stdin.isatty():
-            body = sys.stdin.read().strip()
-            if body:
-                env["policy"] = json.loads(body)["deployment_branch_policy"]
+        # gh sends a body only when --input names it.
+        if body_from == "-":
+            env["policy"] = json.loads(sys.stdin.read())["deployment_branch_policy"]
         save()
     elif len(parts) == 3 and method == "GET":
         if env is None or not (env["policy"] or {{}}).get("custom_branch_policies"):
             not_found()
         out({{"total_count": len(env["branches"]), "branch_policies": env["branches"]}})
     elif len(parts) == 3 and method == "POST":
+        if os.path.exists(os.path.join(fake, "post-fails")):
+            sys.exit(1)
         new_id = max([b["id"] for b in env["branches"]] + [0]) + 1
         env["branches"].append({{"id": new_id, "name": fields["name"], "type": fields["type"]}})
         save()
@@ -258,3 +259,57 @@ def test_dry_run_says_what_it_would_remove_and_changes_nothing(fake):
     assert not any(c.startswith("api -X") for c in calls)
     result, _ = configure(fake, {}, "--diff", keep=True)
     assert result.returncode == 1
+    assert "  environment npm-release: branch:feature/*, branch:main -> branch:main\n" in result.stdout
+
+
+def test_apply_adds_main_before_removing_anything(fake):
+    # A failed add leaves the old policy, so main can still publish.
+    environments = dict(CLEAN)
+    environments["npm-release"] = {"policy": RESTRICTED, "branches": [{"id": 3, "name": "*", "type": "branch"}]}
+    (fake / "post-fails").touch()
+    result, calls = configure(fake, environments, "--apply")
+    assert result.returncode != 0
+    assert not any(c.startswith("api -X DELETE") for c in calls)
+    state = json.loads((fake / "state.json").read_text())
+    assert state["environments"]["npm-release"]["branches"] == [{"id": 3, "name": "*", "type": "branch"}]
+
+
+def test_apply_refuses_a_policy_with_no_type(fake):
+    # It could be a tag named main, so it is neither kept nor deleted blindly.
+    environments = dict(CLEAN)
+    environments["npm-release"] = {"policy": RESTRICTED, "branches": [{"id": 4, "name": "main"}]}
+    result, _ = configure(fake, environments, "--diff")
+    assert result.returncode == 1
+    assert "  environment npm-release: untyped:main -> branch:main\n" in result.stdout
+    result, calls = configure(fake, environments, "--apply")
+    assert result.returncode == 1
+    assert "no type" in result.stderr
+    assert not any("deployment-branch-policies" in c and "-X" in c for c in calls)
+
+
+def test_environment_names_ignore_case(fake):
+    # GitHub treats NPM-RELEASE as npm-release.
+    (fake / "publish.yml").write_text(WORKFLOW.replace("environment: npm-release", "environment: NPM-Release"))
+    environments = dict(CLEAN)
+    environments["npm-release"] = {"policy": None, "branches": []}
+    result, _ = configure(fake, environments, "--diff")
+    assert result.returncode == 1
+    assert "  environment npm-release: any branch -> branch:main\n" in result.stdout
+
+
+def test_an_example_in_a_script_names_no_environment(fake):
+    (fake / "publish.yml").write_text(
+        "jobs:\n"
+        "  docs:\n"
+        "    steps:\n"
+        "      - run: |\n"
+        "          cat <<EOF\n"
+        "          environment: npm-release\n"
+        "          environment:\n"
+        "            name: pypi\n"
+        "          EOF\n"
+    )
+    environments = {"pypi": {"policy": None, "branches": []}}
+    result, calls = configure(fake, environments, "--apply")
+    assert result.returncode == 0, result.stderr
+    assert not any("environments" in c for c in calls)

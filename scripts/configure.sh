@@ -212,8 +212,10 @@ protection_summary() {
 #
 # Every environment the workflows' jobs name, in any form a job can declare it
 # (see the awk program). Matched as whole lines below, so npm-release never
-# matches npm-prerelease.
-environments=$(printf '%s\n' "${all_workflows:-}" | awk -f "$here/scripts/workflow-environments.awk")
+# matches npm-prerelease, and in lower case, since GitHub's environment names
+# ignore case.
+environments=$(printf '%s\n' "${all_workflows:-}" | awk -f "$here/scripts/workflow-environments.awk" |
+	tr '[:upper:]' '[:lower:]')
 names_environment() {
 	case "
 $environments
@@ -241,12 +243,13 @@ read_environment() {
 }
 
 # The environment's branch policies as `<id> <type>:<name>` lines, left in
-# $policies_file. GitHub answers 404 where the environment is missing or not
+# $policies_file; a policy with no type reads `untyped:<name>`, since a tag
+# can be named main too. GitHub answers 404 where the environment is missing or not
 # limited to custom policies, and either way it has none; any other error
 # aborts. Called directly, as above.
 read_branch_policies() {
 	if gh api --paginate "repos/$repo/environments/$1/deployment-branch-policies" \
-		--jq '.branch_policies[] | "\(.id) \(.type):\(.name)"' >"$policies_file" 2>"$api_error"; then
+		--jq '.branch_policies[] | "\(.id) \(.type // "untyped"):\(.name)"' >"$policies_file" 2>"$api_error"; then
 		return 0
 	fi
 	: >"$policies_file"
@@ -329,7 +332,7 @@ run() {
 # with `main` the only one. Any other, added in the UI say, is deleted, since
 # its branches could otherwise mint the publishing token.
 environment() {
-	local name=$1 limit=$2 id rule has_main=false verb=removes
+	local name=$1 limit=$2 id rule verb=removes
 	if [ "$limit" != main ]; then
 		run gh api -X PUT "repos/$repo/environments/$name" --silent
 		return
@@ -339,19 +342,21 @@ environment() {
 JSON
 	[ "$mode" = --apply ] || verb="would remove"
 	read_branch_policies "$name"
-	# Read on fd 3, so that nothing run in the loop can consume the list.
-	while read -r id rule <&3; do
-		if [ "$rule" = branch:main ]; then
-			has_main=true
-			continue
-		fi
-		echo "$name: $verb branch policy $rule (only main may publish)"
-		run gh api -X DELETE "repos/$repo/environments/$name/deployment-branch-policies/$id" --silent
-	done 3<"$policies_file"
-	if [ "$has_main" = false ]; then
+	if grep ' untyped:' "$policies_file" >/dev/null; then
+		echo "$name has a branch policy GitHub reports with no type, so it could be a branch or a tag; check it in the repo's environment settings" >&2
+		exit 1
+	fi
+	# main first, so a failure part way never leaves main unable to publish.
+	if ! grep ' branch:main$' "$policies_file" >/dev/null; then
 		run gh api -X POST "repos/$repo/environments/$name/deployment-branch-policies" \
 			--silent -f name=main -f type=branch
 	fi
+	# Read on fd 3, so that nothing run in the loop can consume the list.
+	while read -r id rule <&3; do
+		[ "$rule" != branch:main ] || continue
+		echo "$name: $verb branch policy $rule (only main may publish)"
+		run gh api -X DELETE "repos/$repo/environments/$name/deployment-branch-policies/$id" --silent
+	done 3<"$policies_file"
 }
 
 echo "$repo is $visibility"
