@@ -591,24 +591,51 @@ def test_catches_a_placeholder_copied_by_hand(repo):
     assert "placeholders" in rules(repo)
 
 
-INSTALL_OR_BUILD = re.compile(r"\b(npm (ci|install|i)\b|pip install|python -m build|uv (sync|build|pip))")
+# A command, not a mention: at the start of a line or after a shell operator,
+# so `echo "npm ci runs in the build job"` passes. `npm pack` and `npm run`
+# run the package's own scripts.
+INSTALL_OR_BUILD = re.compile(
+    r"(?:^|[;&|(])\s*(?:npm (?:ci|install|i|pack|run)\b|pip install|python -m build|uv (?:sync|build|pip)\b)",
+    re.MULTILINE,
+)
 WORKFLOWS = sorted(
     [*ROOT.glob(".github/workflows/*.yml"), *ROOT.glob("template/*/.github/workflows/*.yml")]
 )
 
 
-def test_publishing_workflows_are_checked():
-    publishing = {
-        path.relative_to(ROOT).as_posix()
-        for path in WORKFLOWS
-        for job in yaml.safe_load(path.read_text())["jobs"].values()
-        if (job.get("permissions") or {}).get("id-token") == "write"
-    }
-    assert {
-        "template/node/.github/workflows/publish-release.yml",
-        "template/node/.github/workflows/publish-prerelease.yml",
-        "template/python/.github/workflows/release-please.yml",
-    } <= publishing
+PUBLISHERS = {
+    "template/node/.github/workflows/publish-release.yml": "publish",
+    "template/node/.github/workflows/publish-prerelease.yml": "publish-prerelease",
+    "template/python/.github/workflows/release-please.yml": "publish",
+}
+
+
+@pytest.mark.parametrize("path, job", PUBLISHERS.items())
+def test_publishing_jobs_are_checked(path, job):
+    # The guard below skips any job without id-token: write, so the job that
+    # actually publishes must be one that holds it.
+    jobs = yaml.safe_load((ROOT / path).read_text())["jobs"]
+    assert jobs[job]["permissions"] == {"id-token": "write"}
+
+
+@pytest.mark.parametrize(
+    "run, flagged",
+    [
+        ("npm ci", True),
+        ("echo start\nnpm ci", True),
+        ("cd pkg && npm install", True),
+        ("npm pack", True),
+        ("npm run build", True),
+        ("python -m build", True),
+        ("pip install build", True),
+        ("uv sync --frozen", True),
+        ('echo "npm ci runs in the build job"', False),
+        ('npm publish "$1" --tag "$tag"', False),
+        ("npm publish ./package.tgz", False),
+    ],
+)
+def test_install_or_build_matches_commands_not_mentions(run, flagged):
+    assert bool(INSTALL_OR_BUILD.search(run)) is flagged
 
 
 @pytest.mark.parametrize("path", WORKFLOWS, ids=lambda path: path.relative_to(ROOT).as_posix())
