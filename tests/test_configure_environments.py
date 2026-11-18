@@ -269,6 +269,10 @@ def test_apply_adds_main_before_removing_anything(fake):
     (fake / "post-fails").touch()
     result, calls = configure(fake, environments, "--apply")
     assert result.returncode != 0
+    assert (
+        "api -X POST repos/example/repo/environments/npm-release/deployment-branch-policies"
+        " --silent -f name=main -f type=branch"
+    ) in calls
     assert not any(c.startswith("api -X DELETE") for c in calls)
     state = json.loads((fake / "state.json").read_text())
     assert state["environments"]["npm-release"]["branches"] == [{"id": 3, "name": "*", "type": "branch"}]
