@@ -596,7 +596,7 @@ def test_catches_a_placeholder_copied_by_hand(repo):
 # run the package's own scripts. Variable assignments may come first
 # (`CI=true npm ci`).
 INSTALL_OR_BUILD = re.compile(
-    r"(?:^|[;&|(])\s*(?:\w+=\S*\s+)*(?:npm (?:ci|install|i|pack|run)\b|(?:python3? -m )?pip3? install|python -m build|uv (?:sync|build|pip)\b)",
+    r"(?:^|[;&|(])\s*(?:\w+=\S*\s+)*(?:npm (?:ci|install|i|pack|run)\b|(?:python3? -m )?pip3? install|python3? -m build|uv (?:sync|build|pip)\b)",
     re.MULTILINE,
 )
 WORKFLOWS = sorted(
@@ -632,6 +632,7 @@ def test_publishing_jobs_are_checked(path, job):
         ("uv sync --frozen", True),
         ("CI=true npm ci", True),
         ("python -m pip install build", True),
+        ("python3 -m build", True),
         ("pip3 install build", True),
         ("NODE_ENV=production HUSKY=0 npm install", True),
         ('echo "npm ci runs in the build job"', False),
