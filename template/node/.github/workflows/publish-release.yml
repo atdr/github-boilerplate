@@ -69,7 +69,7 @@ jobs:
           node-version: lts/*
       - run: npm ci
       # Outside the checkout: the package's own scripts may build into dist/.
-      - run: mkdir "$RUNNER_TEMP/pack" && npm pack --pack-destination "$RUNNER_TEMP/pack"
+      - run: mkdir "$RUNNER_TEMP/pack" && npm pack --workspaces=false --pack-destination "$RUNNER_TEMP/pack"
       - uses: actions/upload-artifact@v7
         with:
           name: package
@@ -117,7 +117,7 @@ jobs:
         env:
           # Only these publishConfig keys may come from the package.
           CHECK_PUBLISH_CONFIG: >-
-            const manifest = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+            const manifest = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8").replace(/^\uFEFF/, ""));
             const extra = Object.keys(manifest.publishConfig ?? {})
             .filter((key) => !["access", "tag", "provenance"].includes(key));
             if (extra.length) {
@@ -149,7 +149,9 @@ jobs:
           # checks. The registry and its trust settings come from this job.
           node -e "$CHECK_PUBLISH_CONFIG" "$manifest"
           name=$(node -p 'require(process.argv[1]).name' "$manifest")
-          version=$(node -p 'require(process.argv[1]).version' "$manifest")
+          # npm drops build metadata (1.2.3+abc is 1.2.3), so its hyphens never
+          # pick a dist-tag.
+          version=$(node -p 'require(process.argv[1]).version.split("+")[0]' "$manifest")
           case "$version" in
             *-*)
               tag=$(node -p 'process.argv[1].match(/-([a-z]+)/i)?.[1] ?? "next"' "$version")
