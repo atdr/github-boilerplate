@@ -594,9 +594,9 @@ def test_catches_a_placeholder_copied_by_hand(repo):
 # A command, not a mention: at the start of a line or after a shell operator,
 # so `echo "npm ci runs in the build job"` passes. `npm pack` and `npm run`
 # run the package's own scripts. Variable assignments may come first
-# (`CI=true npm ci`).
+# (`CI=true npm ci`), and so may a shell keyword (`if npm ci; then`).
 INSTALL_OR_BUILD = re.compile(
-    r"(?:^|[;&|(])\s*(?:\w+=\S*\s+)*(?:npm (?:ci|install|i|pack|run)\b|(?:python3? -m )?pip3? install|python3? -m build|uv (?:sync|build|pip)\b)",
+    r"(?:^|[;&|(])\s*(?:(?:if|then|else|elif|do|while|until|!|time|exec|command|env)\s+|\w+=\S*\s+)*(?:npm (?:ci|install|i|pack|run)\b|(?:python3? -m )?pip3? install|python3? -m build|uv (?:sync|build|pip)\b)",
     re.MULTILINE,
 )
 WORKFLOWS = sorted(
@@ -633,6 +633,9 @@ def test_publishing_jobs_are_checked(path, job):
         ("CI=true npm ci", True),
         ("python -m pip install build", True),
         ("python3 -m build", True),
+        ("if npm ci; then echo ok; fi", True),
+        ("while ! pip install build; do sleep 1; done", True),
+        ("env CI=1 npm ci", True),
         ("pip3 install build", True),
         ("NODE_ENV=production HUSKY=0 npm install", True),
         ('echo "npm ci runs in the build job"', False),
