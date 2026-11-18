@@ -114,9 +114,25 @@ jobs:
       # sent.
       - name: Publish
         id: publish
+        env:
+          # Only these publishConfig keys may come from the package.
+          CHECK_PUBLISH_CONFIG: >-
+            const extra = Object.keys(JSON.parse(process.argv[1]).publishConfig ?? {})
+            .filter((key) => !["access", "tag", "provenance"].includes(key));
+            if (extra.length) {
+            console.log(`::error::the packed package.json sets publishConfig ${extra.join(", ")}, which only this workflow may set`);
+            process.exit(1); }
         run: |
           set -- dist/*.tgz
+          if [ $# -ne 1 ] || [ ! -f "$1" ]; then
+            echo "::error::expected exactly one tarball from the build job, found: $*"
+            exit 1
+          fi
           manifest=$(tar -xzOf "$1" package/package.json)
+          # npm applies the tarball's publishConfig, so a build step could
+          # point the OIDC exchange at another registry or switch off TLS
+          # checks. The registry and its trust settings come from this job.
+          node -e "$CHECK_PUBLISH_CONFIG" "$manifest"
           name=$(node -p 'JSON.parse(process.argv[1]).name' "$manifest")
           version=$(node -p 'JSON.parse(process.argv[1]).version' "$manifest")
           case "$version" in
