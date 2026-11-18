@@ -359,6 +359,15 @@ are gone. `--diff` reports it as drift. `--apply` warns and prints the command
 that removes it, but leaves it in place, since it can hold settings the ruleset
 does not.
 
+**The publishing environments' branch policy is the only guard.** The publish
+workflows add no branch check of their own, so `npm-release` and `pypi` must
+allow exactly one branch policy, `branch:main`. `--diff` reports either one as
+drift where it is missing, open to any branch or protected branches, or allows
+anything besides `main`; `npm-prerelease`, dispatched from any branch on
+purpose, only where it is missing. `--apply` deletes every other branch policy
+on the two, naming each one, since a branch added in the UI could otherwise mint
+the publishing token.
+
 **Private repos on GitHub Free** get no rulesets, branch protection, secret
 scanning or private vulnerability reporting. `configure.sh` skips them rather
 than failing.

@@ -15,7 +15,8 @@
 #
 # Prints what it would change, and changes nothing, unless --apply is given.
 # --diff compares the repo's live merge and Actions settings with settings/,
-# and reports classic branch protection, which the ruleset does not replace.
+# reports classic branch protection, which the ruleset does not replace, and
+# checks the branch policy of each publishing environment the workflows name.
 # Actions may open PRs only in a repo whose workflows run release-please.
 # Needs an authenticated gh. Written for bash 3.2 (macOS's stock /bin/bash).
 
@@ -55,7 +56,10 @@ workflow_settings=$(mktemp)
 repository_settings=$(mktemp)
 api_error=$(mktemp)
 protection=$(mktemp)
-trap 'rm -f "$workflow_settings" "$repository_settings" "$api_error" "$protection"' EXIT
+environment_file=$(mktemp)
+policies_file=$(mktemp)
+trap 'rm -f "$workflow_settings" "$repository_settings" "$api_error" "$protection" \
+	"$environment_file" "$policies_file"' EXIT
 # Read first: a private repo gets no ruleset, so its gates are never used.
 visibility=$(gh api "repos/$repo" --jq .visibility)
 # Only a 404 means the repo has no workflows folder. gh prints that error body
@@ -199,6 +203,91 @@ protection_summary() {
 		| if length == 0 then "no status checks" else "requires " + join(", ") end' "$protection"
 }
 
+# Publishing environments. npm-release and pypi are limited to main, with
+# `main` their only branch policy: the workflows add no check of their own, so
+# that policy alone stops a workflow on another branch minting the publishing
+# token. npm-prerelease is dispatched by hand from any branch a beta is built
+# from, so it is left open. Only the environments the repo's workflows name: a
+# repo that publishes nowhere gets none.
+#
+# Every environment the workflows' jobs name, in any form a job can declare it
+# (see the awk program). Matched as whole lines below, so npm-release never
+# matches npm-prerelease, and in lower case, since GitHub's environment names
+# ignore case.
+environments=$(printf '%s\n' "${all_workflows:-}" | awk -f "$here/scripts/workflow-environments.awk" |
+	tr '[:upper:]' '[:lower:]')
+names_environment() {
+	case "
+$environments
+" in
+	*"
+$1
+"*) return 0 ;;
+	esac
+	return 1
+}
+
+# The environment, left in $environment_file. Returns 1 where it does not
+# exist; any other error aborts. Called directly, never in $(...), so that the
+# exit stops the script.
+read_environment() {
+	if gh api "repos/$repo/environments/$1" >"$environment_file" 2>"$api_error"; then
+		return 0
+	fi
+	if grep 'HTTP 404' "$api_error" >/dev/null; then
+		return 1
+	fi
+	echo "could not read $repo's $1 environment:" >&2
+	cat "$api_error" >&2
+	exit 1
+}
+
+# The environment's branch policies as `<id> <type>:<name>` lines, left in
+# $policies_file; a policy with no type reads `untyped:<name>`, since a tag
+# can be named main too. GitHub answers 404 where the environment is missing or not
+# limited to custom policies, and either way it has none; any other error
+# aborts. Called directly, as above.
+read_branch_policies() {
+	if gh api --paginate "repos/$repo/environments/$1/deployment-branch-policies" \
+		--jq '.branch_policies[] | "\(.id) \(.type // "untyped"):\(.name)"' >"$policies_file" 2>"$api_error"; then
+		return 0
+	fi
+	: >"$policies_file"
+	if grep 'HTTP 404' "$api_error" >/dev/null; then
+		return 0
+	fi
+	echo "could not read $repo's $1 branch policies:" >&2
+	cat "$api_error" >&2
+	exit 1
+}
+
+# Appends a line to $environment_drift where the environment is not what it
+# should be: for main, present and limited to exactly `branch:main`; for any,
+# merely present.
+check_environment() {
+	local name=$1 limit=$2 live want=branch:main
+	[ "$limit" = main ] || want="any branch"
+	if ! read_environment "$name"; then
+		live=missing
+	elif [ "$limit" != main ]; then
+		return 0
+	else
+		live=$(jq -r '.deployment_branch_policy
+			| if . == null then "any branch"
+			elif .protected_branches then "protected branches"
+			elif .custom_branch_policies then "custom"
+			else "any branch" end' "$environment_file")
+		if [ "$live" = custom ]; then
+			read_branch_policies "$name"
+			live=$(cut -d' ' -f2- "$policies_file" | sort | paste -sd, - | sed 's/,/, /g')
+			live=${live:-no branch}
+		fi
+	fi
+	[ "$live" = "$want" ] ||
+		environment_drift="${environment_drift}  environment $name: $live -> $want
+"
+}
+
 if [ "$mode" = --diff ]; then
 	# Command substitution drops trailing newlines, so print each part rather
 	# than concatenating them.
@@ -208,11 +297,21 @@ if [ "$mode" = --diff ]; then
 	if has_classic_protection; then
 		classic="  classic branch protection on $default_branch ($(protection_summary)) -> none, the ruleset replaces it"
 	fi
-	if [ -n "$repository$workflow$classic" ]; then
+	environment_drift=
+	for name in npm-release pypi; do
+		if names_environment "$name"; then
+			check_environment "$name" main
+		fi
+	done
+	if names_environment npm-prerelease; then
+		check_environment npm-prerelease any
+	fi
+	if [ -n "$repository$workflow$classic$environment_drift" ]; then
 		echo "$repo differs from settings/ (live -> tracked):"
 		[ -z "$repository" ] || echo "$repository"
 		[ -z "$workflow" ] || echo "$workflow"
 		[ -z "$classic" ] || echo "$classic"
+		[ -z "$environment_drift" ] || printf '%s' "$environment_drift"
 		exit 1
 	fi
 	echo "$repo matches settings/ (release-please: $uses_release_please)"
@@ -227,6 +326,37 @@ run() {
 		printf ' %q' "$@"
 		printf '\n'
 	fi
+}
+
+# Sends a publishing environment. For main: limited to custom branch policies,
+# with `main` the only one. Any other, added in the UI say, is deleted, since
+# its branches could otherwise mint the publishing token.
+environment() {
+	local name=$1 limit=$2 id rule verb=removes
+	if [ "$limit" != main ]; then
+		run gh api -X PUT "repos/$repo/environments/$name" --silent
+		return
+	fi
+	run gh api -X PUT "repos/$repo/environments/$name" --silent --input - <<'JSON'
+{"deployment_branch_policy": {"protected_branches": false, "custom_branch_policies": true}}
+JSON
+	[ "$mode" = --apply ] || verb="would remove"
+	read_branch_policies "$name"
+	if grep ' untyped:' "$policies_file" >/dev/null; then
+		echo "$name has a branch policy GitHub reports with no type, so it could be a branch or a tag; check it in the repo's environment settings" >&2
+		exit 1
+	fi
+	# main first, so a failure part way never leaves main unable to publish.
+	if ! grep ' branch:main$' "$policies_file" >/dev/null; then
+		run gh api -X POST "repos/$repo/environments/$name/deployment-branch-policies" \
+			--silent -f name=main -f type=branch
+	fi
+	# Read on fd 3, so that nothing run in the loop can consume the list.
+	while read -r id rule <&3; do
+		[ "$rule" != branch:main ] || continue
+		echo "$name: $verb branch policy $rule (only main may publish)"
+		run gh api -X DELETE "repos/$repo/environments/$name/deployment-branch-policies/$id" --silent
+	done 3<"$policies_file"
 }
 
 echo "$repo is $visibility"
@@ -314,57 +444,12 @@ else
 		"vulnerability reporting, code scanning, the main ruleset"
 fi
 
-# Publishing environments, limited to main so a workflow on another branch
-# cannot mint the publishing token. Only the ones the repo's workflows name:
-# a repo that publishes nowhere gets none.
-environment() {
-	local name=$1 limit=$2
-	if [ "$limit" = main ]; then
-		run gh api -X PUT "repos/$repo/environments/$name" --silent --input - <<'JSON'
-{"deployment_branch_policy": {"protected_branches": false, "custom_branch_policies": true}}
-JSON
-		# Captured, then matched: no grep -q at the end of a pipeline, which
-		# under pipefail can read a match as a miss.
-		policies=$(gh api "repos/$repo/environments/$name/deployment-branch-policies" \
-			--jq '.branch_policies[].name' 2>/dev/null) || policies=
-		case "
-$policies
-" in
-		*"
-main
-"*) ;;
-		*)
-			run gh api -X POST "repos/$repo/environments/$name/deployment-branch-policies" \
-				--silent -f name=main -f type=branch
-			;;
-		esac
-	else
-		run gh api -X PUT "repos/$repo/environments/$name" --silent
-	fi
-}
-
-# Every environment the workflows' jobs name, in any form a job can declare it
-# (see the awk program). Matched as whole lines below, so npm-release never
-# matches npm-prerelease.
-environments=$(printf '%s\n' "${all_workflows:-}" | awk -f "$here/scripts/workflow-environments.awk")
-names_environment() {
-	case "
-$environments
-" in
-	*"
-$1
-"*) return 0 ;;
-	esac
-	return 1
-}
-
 if names_environment npm-release; then
 	environment npm-release main
 	echo "then on npmjs.com: add a trusted publisher for publish-release.yml" \
 		"(environment npm-release)"
 fi
 if names_environment npm-prerelease; then
-	# Dispatched by hand from any branch a beta is built from.
 	environment npm-prerelease any
 	echo "then on npmjs.com: add a trusted publisher for publish-prerelease.yml" \
 		"(environment npm-prerelease)"
