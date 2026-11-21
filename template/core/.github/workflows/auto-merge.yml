@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   dependabot:
-    uses: atdr/github-boilerplate/.github/workflows/dependabot-auto-merge.yml@v1.3.0 # x-release-please-version
+    uses: atdr/github-boilerplate/.github/workflows/dependabot-auto-merge.yml@v1.3.1 # x-release-please-version
     permissions:
       contents: write
       pull-requests: write
