@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.1](https://github.com/atdr/github-boilerplate/compare/v1.3.0...v1.3.1) (2026-11-21)
+
+
+### Bug Fixes
+
+* **configure:** check and enforce the publishing environments' branch policy ([#81](https://github.com/atdr/github-boilerplate/issues/81)) ([80df2ea](https://github.com/atdr/github-boilerplate/commit/80df2ea8b68191ff6ced2195b2397be1d4d57ea7))
+
 ## [1.3.0](https://github.com/atdr/github-boilerplate/compare/v1.2.0...v1.3.0) (2026-11-17)
 
 
