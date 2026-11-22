@@ -72,7 +72,7 @@ jobs:
             echo "RUN=uv run --no-sync" >> "$GITHUB_ENV"
           fi
       - if: steps.tool.outputs.uv == 'true'
-        uses: astral-sh/setup-uv@v10.3.3
+        uses: astral-sh/setup-uv@v10.4.0
         with:
           python-version: ${{ inputs.python-version }}
       - name: Install
@@ -116,7 +116,7 @@ jobs:
             echo "RUN=uv run --no-sync" >> "$GITHUB_ENV"
           fi
       - if: steps.tool.outputs.uv == 'true'
-        uses: astral-sh/setup-uv@v10.3.3
+        uses: astral-sh/setup-uv@v10.4.0
         with:
           python-version: ${{ matrix.python-version }}
       - name: Install
@@ -157,7 +157,7 @@ jobs:
             echo "RUN=uv run --no-sync" >> "$GITHUB_ENV"
           fi
       - if: steps.tool.outputs.uv == 'true'
-        uses: astral-sh/setup-uv@v10.3.3
+        uses: astral-sh/setup-uv@v10.4.0
         with:
           python-version: ${{ inputs.python-version }}
       - name: Install
@@ -248,7 +248,7 @@ jobs:
         with:
           python-version: ${{ inputs.python-version }}
       - if: steps.tool.outputs.uv == 'true'
-        uses: astral-sh/setup-uv@v10.3.3
+        uses: astral-sh/setup-uv@v10.4.0
         with:
           python-version: ${{ inputs.python-version }}
       # The pip-audit pin lives in this repository, where Dependabot bumps it,
