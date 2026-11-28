@@ -1,5 +1,13 @@
 # Changelog
 
+## [1.3.1](https://github.com/atdr/github-boilerplate/compare/v1.3.0...v1.3.1) (2026-11-28)
+
+
+### Bug Fixes
+
+* **configure:** check and enforce the publishing environments' branch policy ([#81](https://github.com/atdr/github-boilerplate/issues/81)) ([80df2ea](https://github.com/atdr/github-boilerplate/commit/80df2ea8b68191ff6ced2195b2397be1d4d57ea7))
+* **deps:** Bump astral-sh/setup-uv in / ([#83](https://github.com/atdr/github-boilerplate/issues/83)) ([9fe6785](https://github.com/atdr/github-boilerplate/commit/9fe678522a830ccf2b4fdb06a882c8b47759b53e))
+
 ## [1.3.0](https://github.com/atdr/github-boilerplate/compare/v1.2.0...v1.3.0) (2026-11-17)
 
 
